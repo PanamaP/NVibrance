@@ -4,11 +4,10 @@ using System.Windows.Media;
 
 namespace NVibrance;
 
-public sealed class ProgramProfile
+public sealed class ProgramProfile : INotifyPropertyChanged
 {
     private string _name;
     private int _vibrance;
-    private ImageSource? _icon;
 
     public string Name
     {
@@ -37,11 +36,11 @@ public sealed class ProgramProfile
     // Not persisted; computed from ExecutablePath
     public ImageSource? Icon
     {
-        get => _icon;
+        get;
         set
         {
-            if (ReferenceEquals(_icon, value)) return;
-            _icon = value;
+            if (ReferenceEquals(field, value)) return;
+            field = value;
             OnPropertyChanged();
         }
     }

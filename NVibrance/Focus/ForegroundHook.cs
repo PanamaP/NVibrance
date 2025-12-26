@@ -8,7 +8,7 @@ public sealed class ForegroundHook : IDisposable
     private readonly WinEventDelegate _callback;
     private readonly IntPtr _hook;
 
-    public event Action<Process?>? ForegroundProcessChanged;
+    public event Action<IntPtr, Process?>? ForegroundProcessChanged;
 
     public ForegroundHook()
     {
@@ -21,7 +21,7 @@ public sealed class ForegroundHook : IDisposable
             _callback,
             0,
             0,
-            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+            WINEVENT_OUTOFCONTEXT);
 
         if (_hook == IntPtr.Zero)
             throw new InvalidOperationException("Failed to set foreground window hook.");
@@ -39,17 +39,20 @@ public sealed class ForegroundHook : IDisposable
         if (hwnd == IntPtr.Zero)
             return;
 
-        GetWindowThreadProcessId(hwnd, out uint pid);
+        var handlers = ForegroundProcessChanged;
+        if (handlers == null) return;
 
+        GetWindowThreadProcessId(hwnd, out uint pid);
+        Process? process = null;
         try
         {
-            var process = Process.GetProcessById((int)pid);
-            ForegroundProcessChanged?.Invoke(process);
+            process = Process.GetProcessById((int)pid);
         }
         catch
         {
-            ForegroundProcessChanged?.Invoke(null);
+            process = null;
         }
+        handlers(hwnd, process);
     }
 
     public void Dispose()
@@ -70,7 +73,6 @@ public sealed class ForegroundHook : IDisposable
 
     private const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
     private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
-    private const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
 
     [DllImport("user32.dll")]
     private static extern IntPtr SetWinEventHook(

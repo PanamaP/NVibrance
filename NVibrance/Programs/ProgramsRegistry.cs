@@ -15,12 +15,31 @@ public sealed class ProgramRegistry
             return;
 
         _profiles.Add(profile);
+        
+        try
+        {
+            SaveToDisk();
+        }
+        catch
+        {
+            // ignore disk errors
+        }
     }
 
     public bool RemoveByExePath(string exePath)
     {
         var p = FindByExePath(exePath);
         if (p is null) return false;
+        
+        try
+        {
+            SaveToDisk();
+        }
+        catch
+        {
+            // ignore disk errors
+        }
+        
         return _profiles.Remove(p);
     }
 

@@ -9,9 +9,10 @@ public sealed class VibranceController : IDisposable
     private readonly ForegroundHook _hook;
     private readonly ProgramRegistry _registry;
     private readonly VibranceService _vibrance;
-    private readonly VibranceState _state = new();
+    public readonly VibranceState State = new();
 
     private string? _activeExePath;
+    private IntPtr _activeWindowHandle = IntPtr.Zero;
 
     public VibranceController(ForegroundHook hook, ProgramRegistry registry, VibranceService vibrance)
     {
@@ -22,19 +23,20 @@ public sealed class VibranceController : IDisposable
         _hook.ForegroundProcessChanged += OnForegroundChanged;
     }
 
-    private void OnForegroundChanged(Process? process)
+    private void OnForegroundChanged(IntPtr hwnd, Process? process)
     {
         string? exePath = null;
 
         try { exePath = process?.MainModule?.FileName; }
         catch { }
 
-        if (exePath == _activeExePath)
+        if (exePath == _activeExePath && hwnd == _activeWindowHandle)
             return;
 
         _activeExePath = exePath;
+        _activeWindowHandle = hwnd;
 
-        Application.Current.Dispatcher.Invoke(() =>
+        Application.Current.Dispatcher.BeginInvoke(new Action(() =>
         {
             if (exePath == null)
             {
@@ -45,26 +47,29 @@ public sealed class VibranceController : IDisposable
             var profile = _registry.FindByExePath(exePath);
             if (profile != null) ApplyProfile(profile);
             else RestoreIfNeeded();
-        });
+        }));
     }
 
     private void ApplyProfile(ProgramProfile profile)
     {
         var current = _vibrance.GetCurrent();
-        _state.Capture(current);
+        if (current == profile.Vibrance)
+            return;
+        
+        State.Capture(current);
         _vibrance.Set(profile.Vibrance);
     }
 
     private void RestoreIfNeeded()
     {
-        var restore = _state.Restore();
+        var restore = State.Restore();
         if (restore.HasValue)
             _vibrance.Set(restore.Value);
     }
 
     public void Dispose()
     {
-        Application.Current.Dispatcher.Invoke(RestoreIfNeeded);
         _hook.ForegroundProcessChanged -= OnForegroundChanged;
+        Application.Current.Dispatcher.BeginInvoke(new Action(RestoreIfNeeded));
     }
 }

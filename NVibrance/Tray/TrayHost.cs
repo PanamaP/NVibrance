@@ -1,7 +1,8 @@
 ﻿using System.Windows;
+using NVibrance.UI;
 using Application = System.Windows.Application;
 
-namespace NVibrance;
+namespace NVibrance.Tray;
 
 public class TrayHost : IDisposable
 {

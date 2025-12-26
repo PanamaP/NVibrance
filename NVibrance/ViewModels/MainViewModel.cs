@@ -6,6 +6,9 @@ using NVibrance.Services;
 
 namespace NVibrance.ViewModels;
 
+/// <summary>
+/// ViewModel for the main window.
+/// </summary>
 public sealed class MainViewModel : INotifyPropertyChanged
 {
     private readonly ProgramRegistry _registry;
@@ -22,78 +25,89 @@ public sealed class MainViewModel : INotifyPropertyChanged
         RefreshProfiles();
     }
 
-    private VibranceInfo? _selectedDisplay;
     public VibranceInfo? SelectedDisplay
     {
-        get => _selectedDisplay;
+        get;
         set
         {
-            if (!SetField(ref _selectedDisplay, value)) return;
+            if (!SetField(ref field, value)) return;
             if (value is null) return;
 
-            SliderMin = value.Minimum;
+            // ensure UI minimum honors the service minimum
+            SliderMin = Math.Max(value.Minimum, VibranceService.MinVibrance);
             SliderMax = value.Maximum;
-            Vibrance = value.Current;
+
+            // ensure displayed current value respects the service minimum
+            Vibrance = Math.Max(value.Current, VibranceService.MinVibrance);
         }
     }
 
-    private ProgramProfile? _selectedProfile;
     public ProgramProfile? SelectedProfile
     {
-        get => _selectedProfile;
+        get;
         set
         {
-            if (!SetField(ref _selectedProfile, value)) return;
+            if (!SetField(ref field, value)) return;
             if (value is null) return;
 
             ProfileVibrance = value.Vibrance;
         }
     }
 
-    private int _sliderMin;
-    public int SliderMin { get => _sliderMin; private set => SetField(ref _sliderMin, value); }
+    public int SliderMin
+    {
+        get;
+        private set => SetField(ref field, value);
+    }
 
-    private int _sliderMax;
-    public int SliderMax { get => _sliderMax; private set => SetField(ref _sliderMax, value); }
+    public int SliderMax
+    {
+        get;
+        private set => SetField(ref field, value);
+    }
 
-    private int _vibranceValue;
     public int Vibrance
     {
-        get => _vibranceValue;
+        get;
         set
         {
-            if (!SetField(ref _vibranceValue, value)) return;
+            if (!SetField(ref field, value)) return;
             _vibrance.Set(value);
         }
     }
 
-    private int _profileVibrance;
     public int ProfileVibrance
     {
-        get => _profileVibrance;
+        get;
         set
         {
-            if (!SetField(ref _profileVibrance, value)) return;
+            if (!SetField(ref field, value)) return;
             if (SelectedProfile is null) return;
 
             SelectedProfile.Vibrance = value;
         }
     }
 
+    /// <summary>
+    /// Refreshes the list of available displays.
+    /// </summary>
     public void RefreshDisplays()
     {
         Displays.Clear();
-        foreach (var d in NvVibranceReader.ReadAll())
+        foreach (var d in VibranceReader.ReadAll())
             Displays.Add(d);
 
         SelectedDisplay = Displays.FirstOrDefault();
     }
 
+    /// <summary>
+    /// Refreshes the list of available program profiles.
+    /// </summary>
     public void RefreshProfiles()
     {
         Profiles.Clear();
 
-        foreach (var p in _registry.Profiles)
+        foreach (var p in _registry.GetProfiles())
         {
             p.Icon = ExeIconLoader.TryLoad(p.ExecutablePath);
             Profiles.Add(p);
@@ -102,6 +116,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SelectedProfile = Profiles.FirstOrDefault();
     }
 
+    /// <summary>
+    /// Adds a new program profile or selects an existing one.
+    /// </summary>
     public void AddOrSelectProfile(string name, string exePath, int vibrance)
     {
         var existing = _registry.FindByExePath(exePath);
@@ -124,6 +141,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SelectedProfile = Profiles.FirstOrDefault(p => p.Matches(exePath));
     }
 
+    /// <summary>
+    /// Renames the currently selected program profile.
+    /// </summary>
     public void RenameSelectedProfile(string newName)
     {
         if (SelectedProfile is null) return;
@@ -132,6 +152,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SelectedProfile.Name = newName.Trim();
     }
 
+    /// <summary>
+    /// Deletes the currently selected program profile.
+    /// </summary>
     public void DeleteSelectedProfile()
     {
         if (SelectedProfile is null) return;
@@ -142,11 +165,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         RefreshProfiles();
     }
 
+    /// <inheritdoc/>
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>
+    /// Raises the PropertyChanged event.
+    /// </summary>
     private void OnPropertyChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
+    /// <summary>
+    /// Sets a field and raises PropertyChanged if the value changed.
+    /// </summary>
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {
         if (Equals(field, value)) return false;

@@ -6,7 +6,7 @@ namespace NVibrance.Nvidia;
 /// Read-only access to NVIDIA Digital Vibrance.
 /// No writes, no side effects.
 /// </summary>
-public static class NvVibranceReader
+public static class VibranceReader
 {
     public static IReadOnlyList<VibranceInfo> ReadAll()
     {

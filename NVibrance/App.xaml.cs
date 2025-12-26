@@ -1,18 +1,15 @@
-﻿using System.Configuration;
-using System.Data;
-using System.Diagnostics;
+﻿
 using System.Windows;
 using NVibrance.Focus;
-using NVibrance.Nvidia;
 using NVibrance.Services;
-using Application = System.Windows.Application;
+using NVibrance.Tray;
 
 namespace NVibrance;
 
 /// <summary>
 /// Interaction logic for App.xaml
 /// </summary>
-public partial class App : Application
+public partial class App 
 {
     private TrayHost? _tray;
     private ForegroundHook? _hook;
@@ -24,8 +21,6 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-
-        NvApiTest.Initialize();
 
         _registry.LoadFromDisk();
         

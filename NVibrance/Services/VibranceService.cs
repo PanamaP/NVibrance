@@ -1,10 +1,11 @@
 ﻿using NvAPIWrapper.Display;
-using NVibrance.Nvidia;
 
 namespace NVibrance.Services;
 
 public sealed class VibranceService
 {
+    public const int MinVibrance = 50;
+    
     private Display? _cachedDisplay;
     
     public int GetCurrent()
@@ -12,13 +13,15 @@ public sealed class VibranceService
         try
         {
             var display = GetCachedPrimaryDisplay();
-            return display.DigitalVibranceControl.CurrentLevel;
+            var current = display.DigitalVibranceControl.CurrentLevel;
+            return Math.Max(MinVibrance, current);
         }
         catch (InvalidOperationException)
         {
             // try refresh once and rethrow if still failing
             _cachedDisplay = FindPrimaryDisplay();
-            return _cachedDisplay.DigitalVibranceControl.CurrentLevel;
+            var current = _cachedDisplay.DigitalVibranceControl.CurrentLevel;
+            return Math.Max(current, MinVibrance);
         }
     }
 
@@ -29,9 +32,10 @@ public sealed class VibranceService
             var display = GetCachedPrimaryDisplay();
             var dvc = display.DigitalVibranceControl;
 
+            int effectiveMin = Math.Max(dvc.MinimumLevel, MinVibrance);
             int clamped = Math.Clamp(
                 value,
-                dvc.MinimumLevel,
+                effectiveMin,
                 dvc.MaximumLevel);
 
             dvc.CurrentLevel = clamped;
@@ -42,9 +46,10 @@ public sealed class VibranceService
             _cachedDisplay = FindPrimaryDisplay();
             var dvc = _cachedDisplay.DigitalVibranceControl;
 
+            int effectiveMin = Math.Max(dvc.MinimumLevel, MinVibrance);
             int clamped = Math.Clamp(
                 value,
-                dvc.MinimumLevel,
+                effectiveMin,
                 dvc.MaximumLevel);
 
             dvc.CurrentLevel = clamped;
@@ -71,6 +76,4 @@ public sealed class VibranceService
 
         throw new InvalidOperationException("No active NVIDIA display found.");
     }
-    
-    public void RefreshPrimaryDisplay() => _cachedDisplay = FindPrimaryDisplay();
 }

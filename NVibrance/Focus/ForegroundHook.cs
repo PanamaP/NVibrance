@@ -5,23 +5,22 @@ namespace NVibrance.Focus;
 
 public sealed class ForegroundHook : IDisposable
 {
-    private readonly WinEventDelegate _callback;
     private readonly IntPtr _hook;
 
     public event Action<IntPtr, Process?>? ForegroundProcessChanged;
 
     public ForegroundHook()
     {
-        _callback = WinEventProc;
+        WinEventDelegate callback = WinEventProc;
 
         _hook = SetWinEventHook(
-            EVENT_SYSTEM_FOREGROUND,
-            EVENT_SYSTEM_FOREGROUND,
+            EventSystemForeground,
+            EventSystemForeground,
             IntPtr.Zero,
-            _callback,
+            callback,
             0,
             0,
-            WINEVENT_OUTOFCONTEXT);
+            WineventOutofcontext);
 
         if (_hook == IntPtr.Zero)
             throw new InvalidOperationException("Failed to set foreground window hook.");
@@ -71,8 +70,8 @@ public sealed class ForegroundHook : IDisposable
         uint dwEventThread,
         uint dwmsEventTime);
 
-    private const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
-    private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+    private const uint EventSystemForeground = 0x0003;
+    private const uint WineventOutofcontext = 0x0000;
 
     [DllImport("user32.dll")]
     private static extern IntPtr SetWinEventHook(

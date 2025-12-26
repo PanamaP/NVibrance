@@ -1,26 +1,73 @@
 ﻿using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.VisualBasic;
 using NVibrance.ViewModels;
 using MessageBox = System.Windows.MessageBox;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 
-namespace NVibrance;
+namespace NVibrance.UI;
 
-public partial class MainWindow : Window
+public partial class MainWindow
 {
+    private readonly ProgramRegistry _registry;
+    private readonly DispatcherTimer _saveTimer;
+    
     private MainViewModel Vm => (MainViewModel)DataContext;
 
     public MainWindow(ProgramRegistry registry)
     {
+        _registry = registry ?? throw new ArgumentNullException(nameof(registry));
+        
         InitializeComponent();
         DataContext = new MainViewModel(registry);
 
         Closing += OnClosingHide;
         RefreshProcesses();
+        
+        _saveTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(1500)
+        };
+        _saveTimer.Tick += (_, _) =>
+        {
+            _saveTimer.Stop();
+            SavedIndicator.Visibility = Visibility.Collapsed;
+        };
+
+        _registry.Saved += Registry_Saved;
     }
+    
+    // Apply Windows 11 rounded corners via DWM after window is initialized
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero)
+        {
+            // DWMWA_WINDOW_CORNER_PREFERENCE = 33
+            // use DWMWCP_ROUND (2) for full rounding; DWMWCP_ROUNDSMALL (3) for smaller radius
+            var preference = (int)DwmWindowCornerPreference.DwmwcpRound;
+            _ = DwmSetWindowAttribute(hwnd, DwmwaWindowCornerPreference, ref preference, sizeof(int));
+        }
+    }
+    
+    private void Registry_Saved(object? sender, EventArgs e)
+    {
+        // ensure UI thread
+        Dispatcher.Invoke(() =>
+        {
+            SavedIndicator.Visibility = Visibility.Visible;
+            _saveTimer.Stop();
+            _saveTimer.Start();
+        });
+    }
+
     
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -42,9 +89,6 @@ public partial class MainWindow : Window
 
     private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
-    private void MaximizeRestore_Click(object sender, RoutedEventArgs e)
-        => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
-
     private void Close_Click(object sender, RoutedEventArgs e) => Hide();
 
     private void OnClosingHide(object? sender, CancelEventArgs e)
@@ -53,7 +97,7 @@ public partial class MainWindow : Window
         Hide();
     }
 
-    private void RefreshProcesses()
+    private  void RefreshProcesses()
     {
         ProcessList.ItemsSource = RunningProcessScanner.GetUserProcesses();
     }
@@ -121,4 +165,25 @@ public partial class MainWindow : Window
 
         Vm.RenameSelectedProfile(input);
     }
+    
+    protected override void OnClosed(EventArgs e)
+    {
+        _registry.Saved -= Registry_Saved;
+        base.OnClosed(e);
+    }
+    
+    // -------- DWM interop for rounded corners (Windows 11) --------
+    private const int DwmwaWindowCornerPreference = 33;
+
+    private enum DwmWindowCornerPreference
+    {
+        DwmwcpRound = 2,
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(
+        IntPtr hwnd,
+        int dwAttribute,
+        ref int pvAttribute,
+        int cbAttribute);
 }

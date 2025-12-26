@@ -1,0 +1,67 @@
+name: Build & Release (Windows x64)
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore NVibrance.sln
+
+      - name: Build
+        run: dotnet build NVibrance.sln -c Release --no-restore
+
+      # -------- Framework-dependent --------
+      - name: Publish (framework-dependent)
+        run: |
+          dotnet publish NVibrance/NVibrance.csproj \
+            -c Release \
+            -r win-x64 \
+            --self-contained false \
+            /p:PublishSingleFile=true \
+            /p:DebugType=None \
+            /p:DebugSymbols=false \
+            -o publish/framework
+
+      - name: Zip framework-dependent
+        run: Compress-Archive -Path publish\framework\* -DestinationPath NVibrance-win-x64.zip
+
+      # -------- Self-contained --------
+      - name: Publish (self-contained)
+        run: |
+          dotnet publish NVibrance/NVibrance.csproj \
+            -c Release \
+            -r win-x64 \
+            --self-contained true \
+            /p:PublishSingleFile=true \
+            /p:DebugType=None \
+            /p:DebugSymbols=false \
+            -o publish/selfcontained
+
+      - name: Zip self-contained
+        run: Compress-Archive -Path publish\selfcontained\* -DestinationPath NVibrance-win-x64-selfcontained.zip
+
+      # -------- Release --------
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            NVibrance-win-x64.zip
+            NVibrance-win-x64-selfcontained.zip
+          generate_release_notes: true

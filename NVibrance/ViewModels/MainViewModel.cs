@@ -109,7 +109,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         foreach (var p in _registry.GetProfiles())
         {
-            p.Icon = ExeIconLoader.TryLoad(p.ExecutablePath);
+            p.Icon = ExeIconCache.Get(p.ExecutablePath);
             Profiles.Add(p);
         }
 
@@ -126,7 +126,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             var created = new ProgramProfile(name, exePath, vibrance)
             {
-                Icon = ExeIconLoader.TryLoad(exePath)
+                Icon = ExeIconCache.Get(exePath)
             };
 
             _registry.Add(created);
@@ -136,7 +136,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         if (existing.Icon is null)
-            existing.Icon = ExeIconLoader.TryLoad(existing.ExecutablePath);
+        {
+            existing.Icon = ExeIconCache.Get(existing.ExecutablePath);
+        }
 
         SelectedProfile = Profiles.FirstOrDefault(p => p.Matches(exePath));
     }

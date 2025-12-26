@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace NVibrance;
 
@@ -40,6 +41,11 @@ public sealed class ProgramProfile : INotifyPropertyChanged
         set
         {
             if (ReferenceEquals(field, value)) return;
+            
+            // Freeze bitmap to reduce memory/GDI overhead and make it shareable across threads.
+            if (value is BitmapSource { CanFreeze: true, IsFrozen: false } bs)
+                bs.Freeze();
+            
             field = value;
             OnPropertyChanged();
         }

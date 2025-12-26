@@ -367,7 +367,11 @@
                                          SelectedItem="{Binding SelectedProfile}"
                                          ItemTemplate="{StaticResource IconNameTemplate}"
                                          Background="Transparent"
-                                         BorderThickness="0" />
+                                         BorderThickness="0" 
+                                         VirtualizingStackPanel.IsVirtualizing="True"
+                                         VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                         ScrollViewer.CanContentScroll="True" 
+                                         />
                             </Border>
 
                             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
@@ -449,7 +453,10 @@
                                         <ListBox x:Name="ProcessList"
                                                  Height="220"
                                                  Background="Transparent"
-                                                 BorderThickness="0">
+                                                 BorderThickness="0"
+                                                 VirtualizingStackPanel.IsVirtualizing="True"
+                                                 VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                                 ScrollViewer.CanContentScroll="True" >
                                             <ListBox.ItemTemplate>
                                                 <DataTemplate>
                                                     <DockPanel LastChildFill="True">

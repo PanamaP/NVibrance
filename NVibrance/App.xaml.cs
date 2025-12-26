@@ -2,7 +2,7 @@
 using System.Windows;
 using NVibrance.Focus;
 using NVibrance.Services;
-using NVibrance.Tray;
+using NVibrance.UI;
 
 namespace NVibrance;
 
@@ -23,10 +23,19 @@ public partial class App
         base.OnStartup(e);
 
         _registry.LoadFromDisk();
-        
+
         _tray = new TrayHost(_registry);
         _hook = new ForegroundHook();
         _controller = new VibranceController(_hook, _registry, _vibrance);
+
+        if (e.Args.Contains("--minimized"))
+        {
+            return;
+        }
+        
+        var main = new MainWindow(_registry);
+        MainWindow = main;
+        main.Show();
     }
 
     protected override void OnExit(ExitEventArgs e)

@@ -7,6 +7,24 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <UseWPF>true</UseWPF>
         <UseWindowsForms>true</UseWindowsForms>
+        <ApplicationIcon>ui\Assets\logo.ico</ApplicationIcon>
+    </PropertyGroup>
+    
+    <PropertyGroup>
+        <!-- Build configuration -->
+        <Optimize>true</Optimize>
+        <DebugType>portable</DebugType>
+        <Deterministic>true</Deterministic>
+
+        <FileVersion>1.0.0.0</FileVersion>
+        <Product>NVibrance</Product>
+        <Description>NVibrance — per-application NVIDIA digital vibrance profiles</Description>
+        <Company>PanamaP</Company>
+        
+        <RuntimeIdentifier>win-x64</RuntimeIdentifier>     <!-- or win-x86 -->
+        <PublishReadyToRun>true</PublishReadyToRun>       <!-- improve startup -->
+        <PublishSingleFile>true</PublishSingleFile>       <!-- optional -->
+        <OptimizationPreference>Speed</OptimizationPreference>
     </PropertyGroup>
 
     <ItemGroup>

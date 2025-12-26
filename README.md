@@ -43,3 +43,7 @@ NVibrance is a small Windows app (WPF) that applies per-application NVIDIA digit
 
 ## Acknowledgements
 - Inspired by [VibranceGUI](https://github.com/juv/vibranceGUI) — thanks to the original project for the idea and UX inspiration.
+
+## Development status
+This is a hobby project. Development is experimental — the project has only been worked on for two days and may contain rough edges.
+

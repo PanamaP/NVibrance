@@ -22,10 +22,10 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restore
-        run: dotnet restore NVibrance.sln
+        run: dotnet restore NVibrance.slnx
 
       - name: Build
-        run: dotnet build NVibrance.sln -c Release --no-restore
+        run: dotnet build NVibrance.slnx -c Release --no-restore
 
       # -------- Framework-dependent --------
       - name: Publish (framework-dependent)

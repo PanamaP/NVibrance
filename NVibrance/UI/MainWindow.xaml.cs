@@ -1,5 +1,5 @@
 ﻿using System.ComponentModel;
-using System.Runtime.InteropServices;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -48,12 +48,17 @@ public partial class MainWindow
         base.OnSourceInitialized(e);
 
         var hwnd = new WindowInteropHelper(this).Handle;
-        if (hwnd != IntPtr.Zero)
+        if (hwnd == IntPtr.Zero)
         {
-            // DWMWA_WINDOW_CORNER_PREFERENCE = 33
-            // use DWMWCP_ROUND (2) for full rounding; DWMWCP_ROUNDSMALL (3) for smaller radius
-            var preference = (int)DwmWindowCornerPreference.DwmwcpRound;
-            _ = DwmSetWindowAttribute(hwnd, DwmwaWindowCornerPreference, ref preference, sizeof(int));
+            return;
+        }
+        
+        var preference = (int)NativeMethods.DwmWindowCornerPreference.DwmwcpRound;
+        var hr = NativeMethods.DwmSetWindowAttribute(hwnd, NativeMethods.DwmwaWindowCornerPreference, ref preference, sizeof(int));
+
+        if (hr != 0)
+        {
+            Debug.WriteLine($"DwmSetWindowAttribute failed: 0x{hr:X8}");
         }
     }
     
@@ -171,19 +176,4 @@ public partial class MainWindow
         _registry.Saved -= Registry_Saved;
         base.OnClosed(e);
     }
-    
-    // -------- DWM interop for rounded corners (Windows 11) --------
-    private const int DwmwaWindowCornerPreference = 33;
-
-    private enum DwmWindowCornerPreference
-    {
-        DwmwcpRound = 2,
-    }
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(
-        IntPtr hwnd,
-        int dwAttribute,
-        ref int pvAttribute,
-        int cbAttribute);
 }

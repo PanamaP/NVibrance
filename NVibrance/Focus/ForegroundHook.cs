@@ -1,31 +1,77 @@
 ﻿using System.Diagnostics;
-using System.Runtime.InteropServices;
 
 namespace NVibrance.Focus;
 
+/// <summary>
+/// Monitors changes to the foreground window using a Win32 event hook.
+/// Raises events when the foreground process changes.
+/// </summary>
 public sealed class ForegroundHook : IDisposable
 {
+    /// <summary>
+    /// Handle to the Win32 event hook for monitoring foreground window changes.
+    /// </summary>
     private readonly IntPtr _hook;
+    
+    /// <summary>
+    /// Keep a reference to the managed delegate so the GC does not collect it while native code may call it.
+    /// </summary>
+    private readonly NativeMethods.WinEventDelegate _callback;
 
+    /// <summary>
+    /// Event triggered when the foreground process changes.
+    /// Provides the window handle and associated process (if available).
+    /// </summary>
     public event Action<IntPtr, Process?>? ForegroundProcessChanged;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ForegroundHook"/> class.
+    /// Sets up a Win32 event hook to monitor foreground window changes.
+    /// </summary>
     public ForegroundHook()
     {
-        WinEventDelegate callback = WinEventProc;
+        _callback = WinEventProc;
 
-        _hook = SetWinEventHook(
-            EventSystemForeground,
-            EventSystemForeground,
+        _hook = NativeMethods.SetWinEventHook(
+            NativeMethods.EventSystemForeground,
+            NativeMethods.EventSystemForeground,
             IntPtr.Zero,
-            callback,
+            _callback,
             0,
             0,
-            WineventOutofcontext);
+            NativeMethods.WineventOutofcontext);
 
         if (_hook == IntPtr.Zero)
             throw new InvalidOperationException("Failed to set foreground window hook.");
     }
 
+    /// <summary>
+    ///   Handles Win32 foreground window change events triggered by the event hook.
+    ///   This callback is invoked when the foreground window changes,
+    ///   allowing the application to react to focus changes at the OS level.
+    /// </summary>
+    /// <param name="hWinEventHook">
+    ///   Handle to the event hook instance that triggered the callback.
+    /// </param>
+    /// <param name="eventType">
+    ///   The type of event that occurred (should be EVENT_SYSTEM_FOREGROUND).
+    /// </param>
+    /// <param name="hwnd">
+    ///   Handle to the window that became the foreground window.
+    ///   May be IntPtr.Zero if no window is associated.
+    /// </param>
+    /// <param name="idObject">
+    ///   Identifies the object associated with the event (usually OBJID_WINDOW).
+    /// </param>
+    /// <param name="idChild">
+    ///   Identifies the child element of the object, if applicable.
+    /// </param>
+    /// <param name="dwEventThread">
+    ///   Identifier of the thread that generated the event.
+    /// </param>
+    /// <param name="dwmsEventTime">
+    ///   Timestamp (in milliseconds) when the event was generated.
+    /// </param>
     private void WinEventProc(
         IntPtr hWinEventHook,
         uint eventType,
@@ -36,12 +82,23 @@ public sealed class ForegroundHook : IDisposable
         uint dwmsEventTime)
     {
         if (hwnd == IntPtr.Zero)
+        {
             return;
+        }
 
         var handlers = ForegroundProcessChanged;
-        if (handlers == null) return;
+        if (handlers == null)
+        {
+            return;
+        }
 
-        GetWindowThreadProcessId(hwnd, out uint pid);
+        var threadId = NativeMethods.GetWindowThreadProcessId(hwnd, out var pid);
+        if (threadId == 0 || pid == 0)
+        {
+            handlers(hwnd, null);
+            return;
+        }
+        
         Process? process = null;
         try
         {
@@ -56,38 +113,6 @@ public sealed class ForegroundHook : IDisposable
 
     public void Dispose()
     {
-        UnhookWinEvent(_hook);
+        NativeMethods.UnhookWinEvent(_hook);
     }
-
-    // -------- Win32 --------
-
-    private delegate void WinEventDelegate(
-        IntPtr hWinEventHook,
-        uint eventType,
-        IntPtr hwnd,
-        int idObject,
-        int idChild,
-        uint dwEventThread,
-        uint dwmsEventTime);
-
-    private const uint EventSystemForeground = 0x0003;
-    private const uint WineventOutofcontext = 0x0000;
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr SetWinEventHook(
-        uint eventMin,
-        uint eventMax,
-        IntPtr hmodWinEventProc,
-        WinEventDelegate lpfnWinEventProc,
-        uint idProcess,
-        uint idThread,
-        uint dwFlags);
-
-    [DllImport("user32.dll")]
-    private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(
-        IntPtr hWnd,
-        out uint lpdwProcessId);
 }

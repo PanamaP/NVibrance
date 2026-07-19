@@ -104,6 +104,10 @@ public sealed class VibranceController : IDisposable
             }
         }
 
+        Log.Debug(
+            $"Foreground hwnd=0x{hwnd:X} pid={pid} path={exePath ?? "<unresolved>"} " +
+            $"-> {(target is null ? "no matching profile" : $"profile '{target.Name}'")}");
+
         // Same window reaching the same conclusion as last time → nothing new to
         // schedule; avoids NVAPI reads on every poll tick for name-matched or
         // unresolvable windows. (A still-pending debounce commits this same target.)

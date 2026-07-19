@@ -40,6 +40,10 @@
     </ItemGroup>
 
     <ItemGroup>
+      <InternalsVisibleTo Include="NVibrance.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
         <Resource Include="ui\Assets\logo.png" />
         <Resource Include="ui\Assets\logo.ico" />
     </ItemGroup>

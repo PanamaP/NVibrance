@@ -27,6 +27,9 @@ public partial class App
     {
         base.OnStartup(e);
 
+        if (e.Args.Contains("--verbose"))
+            Log.EnableVerbose();
+
         Log.Info($"NVibrance starting, args=[{string.Join(" ", e.Args)}]");
         RegisterGlobalExceptionHandlers();
 

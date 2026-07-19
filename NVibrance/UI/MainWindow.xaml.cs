@@ -6,6 +6,8 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.VisualBasic;
+using NVibrance.Focus;
+using NVibrance.Services;
 using NVibrance.ViewModels;
 using MessageBox = System.Windows.MessageBox;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
@@ -19,12 +21,12 @@ public partial class MainWindow
     
     private MainViewModel Vm => (MainViewModel)DataContext;
 
-    public MainWindow(ProgramRegistry registry)
+    public MainWindow(ProgramRegistry registry, IVibranceService vibrance, VibranceController? controller = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
-        
+
         InitializeComponent();
-        DataContext = new MainViewModel(registry);
+        DataContext = new MainViewModel(registry, vibrance, controller);
 
         Closing += OnClosingHide;
         RefreshProcesses();

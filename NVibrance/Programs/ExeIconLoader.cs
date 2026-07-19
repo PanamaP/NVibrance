@@ -29,8 +29,10 @@ public static class ExeIconLoader
             source.Freeze();
             return source;
         }
-        catch
+        catch (Exception ex)
         {
+            // icon extraction failures are common and harmless; debug-level only
+            Services.Log.Debug($"Icon extraction failed for {exePath}: {ex.Message}");
             return null;
         }
     }

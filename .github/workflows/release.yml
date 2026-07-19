@@ -27,6 +27,9 @@ jobs:
       - name: Build
         run: dotnet build NVibrance.slnx -c Release --no-restore
 
+      - name: Test
+        run: dotnet test NVibrance.slnx -c Release --no-build
+
       # -------- Framework-dependent --------
       - name: Publish (framework-dependent)
         run: dotnet publish NVibrance/NVibrance.csproj -c Release -r win-x64 --self-contained false /p:PublishSingleFile=true /p:DebugType=None /p:DebugSymbols=false -o publish/framework

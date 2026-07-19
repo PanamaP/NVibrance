@@ -1,6 +1,7 @@
 ﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using NVibrance.Focus;
 using NVibrance.Nvidia;
 using NVibrance.Services;
 
@@ -12,14 +13,20 @@ namespace NVibrance.ViewModels;
 public sealed class MainViewModel : INotifyPropertyChanged
 {
     private readonly ProgramRegistry _registry;
-    private readonly VibranceService _vibrance = new();
+    private readonly IVibranceService _vibrance;
+    private readonly VibranceController? _controller;
+
+    /// <summary>Suppresses driver writes while reflecting an already-current value into the slider.</summary>
+    private bool _refreshingDisplayValue;
 
     public ObservableCollection<VibranceInfo> Displays { get; } = new();
     public ObservableCollection<ProgramProfile> Profiles { get; } = new();
 
-    public MainViewModel(ProgramRegistry registry)
+    public MainViewModel(ProgramRegistry registry, IVibranceService vibrance, VibranceController? controller = null)
     {
         _registry = registry;
+        _vibrance = vibrance;
+        _controller = controller;
 
         RefreshDisplays();
         RefreshProfiles();
@@ -37,8 +44,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
             SliderMin = Math.Max(value.Minimum, VibranceService.MinVibrance);
             SliderMax = value.Maximum;
 
-            // ensure displayed current value respects the service minimum
-            Vibrance = Math.Max(value.Current, VibranceService.MinVibrance);
+            // reflect the current value into the slider without writing it back to the
+            // driver — the user's real desktop value (possibly below 50) must survive
+            _refreshingDisplayValue = true;
+            try
+            {
+                Vibrance = Math.Max(value.Current, VibranceService.MinVibrance);
+            }
+            finally
+            {
+                _refreshingDisplayValue = false;
+            }
         }
     }
 
@@ -72,7 +88,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set
         {
             if (!SetField(ref field, value)) return;
-            _vibrance.Set(value);
+            if (_refreshingDisplayValue) return;
+
+            try
+            {
+                _vibrance.Set(value);
+                _controller?.NotifyManualDesktopChange(value);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"Failed to set vibrance to {value}.", ex);
+            }
         }
     }
 
@@ -94,8 +120,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public void RefreshDisplays()
     {
         Displays.Clear();
-        foreach (var d in VibranceReader.ReadAll())
-            Displays.Add(d);
+        try
+        {
+            foreach (var d in VibranceReader.ReadAll())
+                Displays.Add(d);
+        }
+        catch (Exception ex)
+        {
+            // NVAPI unavailable (non-NVIDIA GPU, driver update in progress) → empty list
+            Log.Error("Failed to read displays from NVAPI.", ex);
+        }
 
         SelectedDisplay = Displays.FirstOrDefault();
     }

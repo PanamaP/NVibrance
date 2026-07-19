@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="NVibrance/NVibrance.csproj" />
+  <Project Path="NVibrance.Tests/NVibrance.Tests.csproj" />
 </Solution>

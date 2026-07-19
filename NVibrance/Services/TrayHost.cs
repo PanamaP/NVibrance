@@ -10,12 +10,16 @@ public class TrayHost : IDisposable
 {
     private readonly NotifyIcon _notifyIcon;
     private readonly ProgramRegistry _registry;
+    private readonly IVibranceService _vibrance;
+    private readonly Focus.VibranceController? _controller;
     private readonly ToolStripMenuItem _autostartMenuItem;
     private readonly CancelEventHandler _contextMenuOpeningHandler;
 
-    public TrayHost(ProgramRegistry registry)
+    public TrayHost(ProgramRegistry registry, IVibranceService vibrance, Focus.VibranceController? controller = null)
     {
         _registry = registry;
+        _vibrance = vibrance;
+        _controller = controller;
 
         _autostartMenuItem = new ToolStripMenuItem("Start with Windows")
         {
@@ -47,8 +51,11 @@ public class TrayHost : IDisposable
             if (streamInfo != null)
                 return new Icon(streamInfo.Stream);
         }
-        catch { /* ignore */ }
-        
+        catch (Exception ex)
+        {
+            Log.Warn($"Failed to load tray icon, using system default: {ex.Message}");
+        }
+
         return SystemIcons.Application;
     }
 
@@ -73,8 +80,9 @@ public class TrayHost : IDisposable
         {
             _autostartMenuItem.Checked = AutoStartService.IsEnabled();
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn($"Could not read autostart state: {ex.Message}");
             _autostartMenuItem.Checked = false;
         }
     }
@@ -89,11 +97,13 @@ public class TrayHost : IDisposable
             // reflect actual state (in case of failure)
             UpdateAutostartChecked();
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Error("Failed to update autostart setting.", ex);
             // revert and notify user minimally
             UpdateAutostartChecked();
-            try { MessageBox.Show("Failed to update autostart setting.", "NVibrance", MessageBoxButton.OK, MessageBoxImage.Warning); } catch { }
+            try { MessageBox.Show("Failed to update autostart setting.", "NVibrance", MessageBoxButton.OK, MessageBoxImage.Warning); }
+            catch (Exception mbEx) { Log.Debug($"MessageBox failed: {mbEx.Message}"); }
         }
     }
 
@@ -108,7 +118,7 @@ public class TrayHost : IDisposable
         var app = Application.Current;
 
         if (app.MainWindow == null)
-            app.MainWindow = new MainWindow(_registry);
+            app.MainWindow = new MainWindow(_registry, _vibrance, _controller);
 
         if (!app.MainWindow.IsVisible)
             app.MainWindow.Show();
@@ -133,7 +143,10 @@ public class TrayHost : IDisposable
             _notifyIcon?.Visible = false;
             _notifyIcon?.Dispose();
         }
-        catch { /* ignore */ }
+        catch (Exception ex)
+        {
+            Log.Warn($"Error disposing tray icon: {ex.Message}");
+        }
         GC.SuppressFinalize(this);
     }
 }

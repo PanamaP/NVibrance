@@ -70,4 +70,43 @@ public static class NativeMethods
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(
         IntPtr hWnd,
-        out uint lpdwProcessId);}
+        out uint lpdwProcessId);
+
+    /// <summary>
+    ///   Retrieves a handle to the current foreground window.
+    ///   Returns IntPtr.Zero when there is none (e.g. secure desktop, lock screen).
+    /// </summary>
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+
+    /// <summary>
+    ///   Access right that allows QueryFullProcessImageName even on protected
+    ///   (anti-cheat/elevated) processes, unlike the broader rights Process.MainModule needs.
+    /// </summary>
+    public const uint ProcessQueryLimitedInformation = 0x1000;
+
+    /// <summary>
+    ///   Opens a handle to an existing process with the requested access rights.
+    /// </summary>
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern IntPtr OpenProcess(
+        uint dwDesiredAccess,
+        bool bInheritHandle,
+        uint dwProcessId);
+
+    /// <summary>
+    ///   Retrieves the full Win32 path of the executable for the specified process handle.
+    /// </summary>
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern bool QueryFullProcessImageName(
+        IntPtr hProcess,
+        uint dwFlags,
+        char[] lpExeName,
+        ref uint lpdwSize);
+
+    /// <summary>
+    ///   Closes an open kernel object handle.
+    /// </summary>
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool CloseHandle(IntPtr hObject);
+}

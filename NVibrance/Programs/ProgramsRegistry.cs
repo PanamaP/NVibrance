@@ -2,6 +2,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Timers;
+using NVibrance.Services;
 using Timer = System.Timers.Timer;
 
 
@@ -19,8 +20,21 @@ public sealed class ProgramRegistry : IDisposable
 
     public event EventHandler? Saved;
 
-    public ProgramRegistry()
+    /// <summary>
+    /// Raised when the set of profiles or a profile's vibrance changes,
+    /// so the controller can re-evaluate the current foreground window.
+    /// </summary>
+    public event EventHandler? ProfilesChanged;
+
+    private readonly string? _profilesPathOverride;
+
+    /// <param name="profilesPath">
+    /// Overrides the profiles.json location (used by tests); defaults to
+    /// %APPDATA%\NVibrance\profiles.json.
+    /// </param>
+    public ProgramRegistry(string? profilesPath = null)
     {
+        _profilesPathOverride = profilesPath;
         _debounceTimer = new Timer(DebounceDelayMs) { AutoReset = false };
         _debounceTimer.Elapsed += DebounceTimer_Elapsed;
     }
@@ -45,6 +59,7 @@ public sealed class ProgramRegistry : IDisposable
         }
 
         ScheduleSave();
+        OnProfilesChanged();
     }
 
     public bool RemoveByExePath(string exePath)
@@ -59,6 +74,7 @@ public sealed class ProgramRegistry : IDisposable
         }
 
         ScheduleSave();
+        OnProfilesChanged();
         return true;
     }
 
@@ -70,13 +86,34 @@ public sealed class ProgramRegistry : IDisposable
         }
     }
 
+    /// <summary>
+    /// Finds a profile by bare process name. Used only when the full executable path
+    /// of the foreground process cannot be read (anti-cheat-protected processes).
+    /// </summary>
+    public ProgramProfile? FindByProcessName(string processName)
+    {
+        List<ProgramProfile> matches;
+        lock (_sync)
+        {
+            matches = _profiles.Where(p => p.MatchesProcessName(processName)).ToList();
+        }
+
+        if (matches.Count > 1)
+            Log.Warn($"Multiple profiles match process name '{processName}'; using '{matches[0].Name}'.");
+
+        return matches.FirstOrDefault();
+    }
+
     private ProgramProfile? FindByExePathInternal(string exePath)
         => _profiles.FirstOrDefault(p => p.Matches(exePath));
 
     // ---- persistence ----
 
-    private static string GetProfilesPath()
+    private string GetProfilesPath()
     {
+        if (_profilesPathOverride is not null)
+            return _profilesPathOverride;
+
         var dir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "NVibrance");
@@ -119,13 +156,32 @@ public sealed class ProgramRegistry : IDisposable
                 }
             }
         }
-        catch
+        catch (JsonException ex)
         {
-            // ignore bad/corrupt file; keep current in-memory list
+            Log.Error($"profiles.json is corrupt; keeping in-memory profiles. Path: {path}", ex);
+            BackupCorruptFile(path);
+        }
+        catch (Exception ex)
+        {
+            // IOException (file locked, e.g. by cloud sync), UnauthorizedAccessException, …
+            Log.Warn($"Could not read profiles from {path}: {ex.GetType().Name}: {ex.Message}");
         }
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    private static void BackupCorruptFile(string path)
+    {
+        try
+        {
+            File.Copy(path, path + ".bad", overwrite: true);
+            Log.Info($"Backed up corrupt profiles file to {path}.bad");
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Could not back up corrupt profiles file: {ex.Message}");
         }
     }
 
@@ -147,14 +203,13 @@ public sealed class ProgramRegistry : IDisposable
 
             var tmp = path + ".tmp";
             File.WriteAllText(tmp, json);
-            File.Copy(tmp, path, overwrite: true);
-            File.Delete(tmp);
+            File.Move(tmp, path, overwrite: true);
 
             OnSaved();
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore disk errors
+            Log.Warn($"Failed to save profiles: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -173,9 +228,10 @@ public sealed class ProgramRegistry : IDisposable
         {
             SaveToDisk();
         }
-        catch
+        catch (Exception ex)
         {
-            // swallow errors from timer thread
+            // an escaped exception on this timer thread would kill the process
+            Log.Error("Unexpected error saving profiles from debounce timer.", ex);
         }
     }
 
@@ -187,6 +243,12 @@ public sealed class ProgramRegistry : IDisposable
     }
 
     private void OnSaved() => Saved?.Invoke(this, EventArgs.Empty);
+
+    private void OnProfilesChanged()
+    {
+        if (_isLoading) return;
+        ProfilesChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     private void AttachProfile(ProgramProfile profile)
     {
@@ -200,6 +262,10 @@ public sealed class ProgramRegistry : IDisposable
             {
                 ScheduleSave();
             }
+
+            // A changed vibrance value affects what should currently be applied
+            if (string.Equals(e.PropertyName, nameof(ProgramProfile.Vibrance), StringComparison.Ordinal))
+                OnProfilesChanged();
         };
 
         profile.PropertyChanged += handler;

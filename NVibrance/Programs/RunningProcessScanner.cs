@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Windows.Media;
+using NVibrance.Focus;
 
 namespace NVibrance;
 
@@ -16,7 +17,8 @@ public static class RunningProcessScanner
                 if (process.MainWindowHandle == IntPtr.Zero)
                     continue;
 
-                if (process.MainModule?.FileName is not string exePath)
+                // Resolver works for anti-cheat-protected games, which MainModule does not
+                if (ProcessPathResolver.TryGetExecutablePath((uint)process.Id) is not string exePath)
                     continue;
 
                 if (exePath.StartsWith(
@@ -29,9 +31,10 @@ public static class RunningProcessScanner
                     ExePath: exePath,
                     Icon: ExeIconLoader.TryLoad(exePath)));
             }
-            catch
+            catch (Exception ex)
             {
-                // Access denied → ignore
+                // Access denied for protected processes → skip
+                Services.Log.Debug($"Skipping process {process.ProcessName} (pid {process.Id}): {ex.Message}");
             }
         }
 

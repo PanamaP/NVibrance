@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -60,6 +61,16 @@ public sealed class ProgramProfile : INotifyPropertyChanged
 
     public bool Matches(string exePath)
         => string.Equals(ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Last-resort match by bare process name (no directory, no extension), used only
+    /// when the foreground process's full path cannot be read (protected processes).
+    /// </summary>
+    public bool MatchesProcessName(string processName)
+        => string.Equals(
+            Path.GetFileNameWithoutExtension(ExecutablePath),
+            processName,
+            StringComparison.OrdinalIgnoreCase);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

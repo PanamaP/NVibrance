@@ -16,7 +16,11 @@ public static class AutoStartService
             var val = key.GetValue(valueName) as string;
             return !string.IsNullOrEmpty(val);
         }
-        catch { return false; }
+        catch (Exception ex)
+        {
+            Log.Warn($"Could not read autostart registry value: {ex.Message}");
+            return false;
+        }
     }
 
     private static void Enable(string valueName = DefaultValueName)
@@ -34,7 +38,10 @@ public static class AutoStartService
             using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true) ?? Registry.CurrentUser.CreateSubKey(RunKey);
             key.SetValue(valueName, quoted, RegistryValueKind.String);
         }
-        catch { /* swallow errors */ }
+        catch (Exception ex)
+        {
+            Log.Warn($"Could not enable autostart: {ex.Message}");
+        }
     }
 
     private static void Disable(string valueName = DefaultValueName)
@@ -44,7 +51,10 @@ public static class AutoStartService
             using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
             key?.DeleteValue(valueName, throwOnMissingValue: false);
         }
-        catch { /* swallow errors */ }
+        catch (Exception ex)
+        {
+            Log.Warn($"Could not disable autostart: {ex.Message}");
+        }
     }
 
     public static void SetEnabled(bool enable, string valueName = DefaultValueName)

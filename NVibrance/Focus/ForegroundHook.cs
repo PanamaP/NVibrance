@@ -1,6 +1,4 @@
-﻿using System.Diagnostics;
-
-namespace NVibrance.Focus;
+﻿namespace NVibrance.Focus;
 
 /// <summary>
 /// Monitors changes to the foreground window using a Win32 event hook.
@@ -19,10 +17,10 @@ public sealed class ForegroundHook : IDisposable
     private readonly NativeMethods.WinEventDelegate _callback;
 
     /// <summary>
-    /// Event triggered when the foreground process changes.
-    /// Provides the window handle and associated process (if available).
+    /// Event triggered when the foreground window changes.
+    /// Provides the window handle and owning process id (0 if it could not be determined).
     /// </summary>
-    public event Action<IntPtr, Process?>? ForegroundProcessChanged;
+    public event Action<IntPtr, uint>? ForegroundProcessChanged;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ForegroundHook"/> class.
@@ -93,22 +91,10 @@ public sealed class ForegroundHook : IDisposable
         }
 
         var threadId = NativeMethods.GetWindowThreadProcessId(hwnd, out var pid);
-        if (threadId == 0 || pid == 0)
-        {
-            handlers(hwnd, null);
-            return;
-        }
-        
-        Process? process = null;
-        try
-        {
-            process = Process.GetProcessById((int)pid);
-        }
-        catch
-        {
-            process = null;
-        }
-        handlers(hwnd, process);
+        if (threadId == 0)
+            pid = 0;
+
+        handlers(hwnd, pid);
     }
 
     public void Dispose()

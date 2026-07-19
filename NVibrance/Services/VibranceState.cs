@@ -28,6 +28,19 @@ public sealed class VibranceState
     }
 
     /// <summary>
+    /// Replace the captured value while an override is active. Used when the user
+    /// manually changes the desktop vibrance mid-override, so restore keeps their
+    /// change instead of silently undoing it.
+    /// </summary>
+    public void Recapture(int current)
+    {
+        if (!IsOverridden)
+            return;
+
+        PreviousValue = current;
+    }
+
+    /// <summary>
     /// Restore the previously captured vibrance value if overridden.
     /// </summary>
     public int? Restore()

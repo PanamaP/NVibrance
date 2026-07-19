@@ -33,6 +33,9 @@ public partial class App
         Log.Info($"NVibrance starting, args=[{string.Join(" ", e.Args)}]");
         RegisterGlobalExceptionHandlers();
 
+        // the app may have been moved since autostart was enabled
+        AutoStartService.SyncIfEnabled();
+
         _registry.LoadFromDisk();
 
         try

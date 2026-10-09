@@ -60,6 +60,70 @@ public class VibranceControllerTests : IDisposable
     }
 
     [Fact]
+    public void ActiveProfile_TracksWhatIsApplied()
+    {
+        AddApexProfile();
+        _paths[GamePid] = ApexPath;
+        _paths[OtherPid] = @"C:\Windows\explorer.exe";
+        using var controller = CreateController();
+        var changes = 0;
+        controller.StatusChanged += (_, _) => changes++;
+
+        controller.Evaluate(GameHwnd, GamePid);
+        Assert.Equal("Apex", controller.ActiveProfile?.Name);
+
+        controller.Evaluate(OtherHwnd, OtherPid);
+        Assert.Null(controller.ActiveProfile);
+        Assert.Equal(2, changes);
+    }
+
+    [Fact]
+    public void Pause_RestoresDesktopAndStopsSwitching()
+    {
+        AddApexProfile();
+        _paths[GamePid] = ApexPath;
+        _foreground = (GameHwnd, GamePid);
+        using var controller = CreateController();
+        controller.Evaluate(GameHwnd, GamePid);
+
+        controller.IsPaused = true;
+        controller.Evaluate(GameHwnd, GamePid);
+
+        Assert.Equal(new[] { 80, 50 }, _vibrance.SetCalls);
+        Assert.Null(controller.ActiveProfile);
+    }
+
+    [Fact]
+    public void Resume_ReappliesForTheFocusedWindow()
+    {
+        AddApexProfile();
+        _paths[GamePid] = ApexPath;
+        _foreground = (GameHwnd, GamePid);
+        using var controller = CreateController();
+        controller.Evaluate(GameHwnd, GamePid);
+        controller.IsPaused = true;
+
+        controller.IsPaused = false;
+
+        Assert.Equal(new[] { 80, 50, 80 }, _vibrance.SetCalls);
+        Assert.Equal("Apex", controller.ActiveProfile?.Name);
+    }
+
+    [Fact]
+    public void ProfileChangesWhilePaused_DoNotApply()
+    {
+        AddApexProfile();
+        _paths[GamePid] = ApexPath;
+        _foreground = (GameHwnd, GamePid);
+        using var controller = CreateController();
+        controller.IsPaused = true;
+
+        _registry.FindByExePath(ApexPath)!.Vibrance = 90;
+
+        Assert.Empty(_vibrance.SetCalls);
+    }
+
+    [Fact]
     public void AlreadyAtTarget_DoesNotCaptureOrSet()
     {
         AddApexProfile();

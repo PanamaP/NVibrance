@@ -25,6 +25,42 @@ public sealed class VibranceController : IDisposable
     private string? _activeExePath;
     private ProgramProfile? _lastTarget;
     private ProgramProfile? _pendingTarget;
+    private bool _isPaused;
+
+    /// <summary>The profile currently applied, or null when the desktop value is in effect.</summary>
+    public ProgramProfile? ActiveProfile { get; private set; }
+
+    /// <summary>Raised when <see cref="ActiveProfile"/> or <see cref="IsPaused"/> may have changed.</summary>
+    public event EventHandler? StatusChanged;
+
+    /// <summary>
+    /// Pausing restores the desktop value and stops switching until resumed; resuming
+    /// immediately re-evaluates the focused window. Not persisted across restarts.
+    /// </summary>
+    public bool IsPaused
+    {
+        get => _isPaused;
+        set
+        {
+            if (_isPaused == value) return;
+            _isPaused = value;
+            Log.Info(value ? "Automatic switching paused." : "Automatic switching resumed.");
+
+            ForgetEvaluation();
+            if (value)
+            {
+                _debounce.Cancel();
+                _pendingTarget = null;
+                CommitPending(); // restores the desktop value
+            }
+            else
+            {
+                EvaluateCurrentForeground();
+            }
+
+            StatusChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     public VibranceController(
         ForegroundHook? hook,
@@ -74,6 +110,9 @@ public sealed class VibranceController : IDisposable
 
     public void Evaluate(IntPtr hwnd, uint pid)
     {
+        if (_isPaused)
+            return;
+
         var exePath = _resolveExePath(pid);
         var sameWindow = hwnd == _activeWindowHandle;
 
@@ -130,10 +169,15 @@ public sealed class VibranceController : IDisposable
     private void OnProfilesChanged(object? sender, EventArgs e)
     {
         // Matching data changed: forget cached conclusions and re-check the current window.
+        ForgetEvaluation();
+        EvaluateCurrentForeground();
+    }
+
+    private void ForgetEvaluation()
+    {
         _activeWindowHandle = IntPtr.Zero;
         _activeExePath = null;
         _lastTarget = null;
-        EvaluateCurrentForeground();
     }
 
     private void CommitPending()
@@ -144,11 +188,16 @@ public sealed class VibranceController : IDisposable
                 ApplyProfile(_pendingTarget);
             else
                 RestoreIfNeeded();
+
+            ActiveProfile = _pendingTarget;
         }
         catch (Exception ex)
         {
             Log.Error("Failed to apply or restore vibrance.", ex);
         }
+
+        // also after a failure, and when a profile's value changed: listeners re-read
+        StatusChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void ApplyProfile(ProgramProfile profile)

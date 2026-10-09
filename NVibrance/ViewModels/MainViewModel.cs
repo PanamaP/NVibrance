@@ -1,4 +1,5 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using NVibrance.Focus;
@@ -19,14 +20,28 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// <summary>Suppresses driver writes while reflecting an already-current value into the slider.</summary>
     private bool _refreshingDisplayValue;
 
+    /// <summary>
+    /// Set while model state is pushed into the slider. A slider coerces an out-of-range
+    /// value and writes it back through the binding; that write must not overwrite a profile.
+    /// </summary>
+    private bool _syncingSlider;
+
     public ObservableCollection<VibranceInfo> Displays { get; } = new();
-    public ObservableCollection<ProgramProfile> Profiles { get; } = new();
+
+    public DesktopEntry Desktop { get; } = new();
+
+    /// <summary>Sidebar rows: the <see cref="Desktop"/> entry first, then every profile.</summary>
+    public ObservableCollection<object> Entries { get; } = new();
 
     public MainViewModel(ProgramRegistry registry, IVibranceService vibrance, VibranceController? controller = null)
     {
         _registry = registry;
         _vibrance = vibrance;
         _controller = controller;
+
+        Entries.CollectionChanged += OnEntriesChanged;
+        if (_controller is not null)
+            _controller.StatusChanged += (_, _) => OnPropertyChanged(nameof(IsSwitchingPaused));
 
         RefreshDisplays();
         RefreshProfiles();
@@ -41,53 +56,136 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (value is null) return;
 
             // ensure UI minimum honors the service minimum
-            SliderMin = Math.Max(value.Minimum, VibranceService.MinVibrance);
-            SliderMax = value.Maximum;
+            SyncSlider(() =>
+            {
+                SliderMin = Math.Max(value.Minimum, VibranceService.MinVibrance);
+                SliderMax = value.Maximum;
+            });
 
-            // reflect the current value into the slider without writing it back to the
-            // driver — the user's real desktop value (possibly below 50) must survive
-            _refreshingDisplayValue = true;
-            try
-            {
-                Vibrance = Math.Max(value.Current, VibranceService.MinVibrance);
-            }
-            finally
-            {
-                _refreshingDisplayValue = false;
-            }
+            ShowDesktopValue(value.Current);
         }
     }
 
-    public ProgramProfile? SelectedProfile
+    /// <summary>
+    /// Re-reads the desktop vibrance, which may have changed outside NVibrance
+    /// (e.g. in the NVIDIA Control Panel) since the window was last shown.
+    /// </summary>
+    public void RefreshDesktopVibrance()
+    {
+        if (!HasDisplay) return;
+
+        try
+        {
+            ShowDesktopValue(_vibrance.GetCurrent());
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Could not read the current vibrance: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Reflects the desktop value into the UI without writing it back to the driver;
+    /// the user's real desktop value (possibly below 50) must survive.
+    /// </summary>
+    private void ShowDesktopValue(int driverValue)
+    {
+        // while a profile is applied the driver holds the profile's value, not the desktop's
+        var desktop = _controller?.State.CapturedValue ?? driverValue;
+
+        _refreshingDisplayValue = true;
+        try
+        {
+            Vibrance = Math.Max(desktop, VibranceService.MinVibrance);
+        }
+        finally
+        {
+            _refreshingDisplayValue = false;
+        }
+    }
+
+    private void SyncSlider(Action update)
+    {
+        _syncingSlider = true;
+        try
+        {
+            update();
+        }
+        finally
+        {
+            _syncingSlider = false;
+        }
+    }
+
+    /// <summary>The selected sidebar row: <see cref="Desktop"/> or a <see cref="ProgramProfile"/>.</summary>
+    public object? SelectedEntry
     {
         get;
         set
         {
             if (!SetField(ref field, value)) return;
-            if (value is null) return;
 
-            ProfileVibrance = value.Vibrance;
+            OnPropertyChanged(nameof(SelectedProfile));
+            OnPropertyChanged(nameof(IsDesktopSelected));
+            OnPropertyChanged(nameof(IsProfileSelected));
+            SyncSlider(() => OnPropertyChanged(nameof(DetailVibrance)));
+        }
+    }
+
+    public ProgramProfile? SelectedProfile => SelectedEntry as ProgramProfile;
+
+    public bool IsDesktopSelected => SelectedEntry is DesktopEntry;
+
+    public bool IsProfileSelected => SelectedEntry is ProgramProfile;
+
+    public bool HasProfiles => Entries.Count > 1;
+
+    /// <summary>Automatic profile switching is paused (set from the tray menu).</summary>
+    public bool IsSwitchingPaused
+    {
+        get => _controller?.IsPaused ?? false;
+        set
+        {
+            if (_controller is not null)
+                _controller.IsPaused = value;
         }
     }
 
     public int SliderMin
     {
         get;
-        private set => SetField(ref field, value);
+        private set
+        {
+            if (SetField(ref field, value))
+                OnPropertyChanged(nameof(HasDisplay));
+        }
     }
 
     public int SliderMax
     {
         get;
-        private set => SetField(ref field, value);
+        private set
+        {
+            if (SetField(ref field, value))
+                OnPropertyChanged(nameof(HasDisplay));
+        }
     }
 
+    /// <summary>False when NVAPI found no active NVIDIA display, so there is nothing to adjust.</summary>
+    public bool HasDisplay => SliderMax > SliderMin;
+
+    /// <summary>The desktop vibrance; setting it writes to the driver immediately.</summary>
     public int Vibrance
     {
         get;
         set
         {
             if (!SetField(ref field, value)) return;
+
+            Desktop.Vibrance = value;
+            if (IsDesktopSelected)
+                SyncSlider(() => OnPropertyChanged(nameof(DetailVibrance)));
+
             if (_refreshingDisplayValue) return;
 
             try
@@ -102,15 +200,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public int ProfileVibrance
+    /// <summary>The vibrance of whichever sidebar row is selected.</summary>
+    public int DetailVibrance
     {
-        get;
+        get => SelectedProfile?.Vibrance ?? Vibrance;
         set
         {
-            if (!SetField(ref field, value)) return;
-            if (SelectedProfile is null) return;
+            if (_syncingSlider || value == DetailVibrance) return;
 
-            SelectedProfile.Vibrance = value;
+            if (SelectedProfile is { } profile)
+            {
+                profile.Vibrance = value;
+                ProfileEdited?.Invoke(this, EventArgs.Empty);
+            }
+            else
+            {
+                Vibrance = value;
+            }
+
+            OnPropertyChanged();
         }
     }
 
@@ -135,19 +243,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Refreshes the list of available program profiles.
+    /// Rebuilds the sidebar from the registry, keeping the selection when it still exists.
     /// </summary>
     public void RefreshProfiles()
     {
-        Profiles.Clear();
+        var previous = SelectedProfile?.ExecutablePath;
+
+        Entries.Clear();
+        Entries.Add(Desktop);
 
         foreach (var p in _registry.GetProfiles())
         {
             p.Icon = ExeIconCache.Get(p.ExecutablePath);
-            Profiles.Add(p);
+            Entries.Add(p);
         }
 
-        SelectedProfile = Profiles.FirstOrDefault();
+        SelectedEntry = (previous is null ? null : FindEntry(previous)) ?? (object)Desktop;
     }
 
     /// <summary>
@@ -155,8 +266,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// </summary>
     public void AddOrSelectProfile(string name, string exePath, int vibrance)
     {
-        var existing = _registry.FindByExePath(exePath);
-        if (existing is null)
+        if (_registry.FindByExePath(exePath) is null)
         {
             var created = new ProgramProfile(name, exePath, vibrance)
             {
@@ -164,17 +274,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             };
 
             _registry.Add(created);
-            RefreshProfiles();
-            SelectedProfile = Profiles.FirstOrDefault(p => p.Matches(exePath));
-            return;
+            Entries.Add(created);
         }
 
-        if (existing.Icon is null)
-        {
-            existing.Icon = ExeIconCache.Get(existing.ExecutablePath);
-        }
-
-        SelectedProfile = Profiles.FirstOrDefault(p => p.Matches(exePath));
+        SelectedEntry = FindEntry(exePath);
     }
 
     /// <summary>
@@ -185,21 +288,56 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (SelectedProfile is null) return;
         if (string.IsNullOrWhiteSpace(newName)) return;
 
-        SelectedProfile.Name = newName.Trim();
+        var trimmed = newName.Trim();
+        if (trimmed == SelectedProfile.Name) return;
+
+        SelectedProfile.Name = trimmed;
+        ProfileEdited?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
-    /// Deletes the currently selected program profile.
+    /// Deletes the currently selected program profile and selects its neighbour.
+    /// Returns the removed profile so the caller can offer undo via <see cref="RestoreProfile"/>.
     /// </summary>
-    public void DeleteSelectedProfile()
+    public ProgramProfile? DeleteSelectedProfile()
     {
-        if (SelectedProfile is null) return;
+        if (SelectedProfile is not { } removed) return null;
 
-        var exePath = SelectedProfile.ExecutablePath;
-        _registry.RemoveByExePath(exePath);
+        var index = Entries.IndexOf(removed);
+        _registry.RemoveByExePath(removed.ExecutablePath);
+        Entries.Remove(removed);
 
-        RefreshProfiles();
+        // the row that slid into its place, else the one above (Desktop at worst)
+        SelectedEntry = Entries[Math.Min(index, Entries.Count - 1)];
+        return removed;
     }
+
+    /// <summary>
+    /// Re-adds a profile removed by <see cref="DeleteSelectedProfile"/> and selects it.
+    /// If the same executable was added again in the meantime, that profile wins.
+    /// </summary>
+    public void RestoreProfile(ProgramProfile profile)
+    {
+        if (_registry.FindByExePath(profile.ExecutablePath) is null)
+        {
+            _registry.Add(profile);
+            Entries.Add(profile);
+        }
+
+        SelectedEntry = FindEntry(profile.ExecutablePath);
+    }
+
+    private ProgramProfile? FindEntry(string exePath)
+        => Entries.OfType<ProgramProfile>().FirstOrDefault(p => p.Matches(exePath));
+
+    private void OnEntriesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        => OnPropertyChanged(nameof(HasProfiles));
+
+    /// <summary>
+    /// Raised when the user changes a profile's name or vibrance (but not when profiles
+    /// are added or removed), so the view can confirm the save that follows.
+    /// </summary>
+    public event EventHandler? ProfileEdited;
 
     /// <inheritdoc/>
     public event PropertyChangedEventHandler? PropertyChanged;

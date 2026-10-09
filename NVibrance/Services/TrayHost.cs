@@ -1,19 +1,36 @@
-﻿using System.ComponentModel;
+using System.IO;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
 using NVibrance.UI;
 using Application = System.Windows.Application;
+using ContextMenu = System.Windows.Controls.ContextMenu;
+using MenuItem = System.Windows.Controls.MenuItem;
 using MessageBox = System.Windows.MessageBox;
+using Separator = System.Windows.Controls.Separator;
 
 namespace NVibrance.Services;
 
 public class TrayHost : IDisposable
 {
+    private const int TooltipMaxLength = 127; // NotifyIcon.Text limit
+    private static readonly TimeSpan TooltipRefreshInterval = TimeSpan.FromSeconds(2);
+
     private readonly NotifyIcon _notifyIcon;
     private readonly ProgramRegistry _registry;
     private readonly IVibranceService _vibrance;
     private readonly Focus.VibranceController? _controller;
-    private readonly ToolStripMenuItem _autostartMenuItem;
-    private readonly CancelEventHandler _contextMenuOpeningHandler;
+
+    private readonly ContextMenu _menu;
+    private readonly TextBlock _statusTitle = new() { FontWeight = FontWeights.SemiBold };
+    private readonly TextBlock _statusDetail = new() { FontSize = 12, Margin = new Thickness(0, 2, 0, 0) };
+    private readonly MenuItem _pauseMenuItem;
+    private readonly MenuItem _autostartMenuItem;
+
+    private DateTime _tooltipRefreshedAtUtc;
+    private bool _exiting;
+    private bool _syncingMenu;
 
     public TrayHost(ProgramRegistry registry, IVibranceService vibrance, Focus.VibranceController? controller = null)
     {
@@ -21,25 +38,29 @@ public class TrayHost : IDisposable
         _vibrance = vibrance;
         _controller = controller;
 
-        _autostartMenuItem = new ToolStripMenuItem("Start with Windows")
-        {
-            CheckOnClick = true
-        };
-        _autostartMenuItem.Click += AutostartMenuItem_Click;
-        
-        _contextMenuOpeningHandler = (_, _) => UpdateAutostartChecked();
-        
+        _statusDetail.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+
+        _pauseMenuItem = CreateToggleItem("Pause automatic switching", SetPaused);
+        _pauseMenuItem.Visibility = controller is null ? Visibility.Collapsed : Visibility.Visible;
+
+        _autostartMenuItem = CreateToggleItem("Start with Windows", SetAutostart);
+
+        _menu = BuildMenu();
+
         _notifyIcon = new NotifyIcon
         {
             Text = "NVibrance",
             Icon = LoadIcon(),
             Visible = true,
-            ContextMenuStrip = BuildMenu(),
         };
 
         _notifyIcon.MouseClick += OnMouseClick;
-        if (_notifyIcon.ContextMenuStrip != null)
-            _notifyIcon.ContextMenuStrip.Opening += _contextMenuOpeningHandler;
+        _notifyIcon.MouseMove += OnMouseMove;
+
+        if (_controller is not null)
+            _controller.StatusChanged += OnStatusChanged;
+
+        RefreshStatus();
     }
 
     private Icon LoadIcon()
@@ -59,39 +80,184 @@ public class TrayHost : IDisposable
         return SystemIcons.Application;
     }
 
-    private ContextMenuStrip BuildMenu()
+    // ---------------------------------------------------------------- menu
+
+    private ContextMenu BuildMenu()
     {
-        var menu = new ContextMenuStrip();
+        var menu = new ContextMenu();
+        menu.SetResourceReference(FrameworkElement.StyleProperty, "TrayMenuStyle");
 
-        menu.Items.Add("Open", null, (_, _) => ShowMainWindow());
-        menu.Items.Add(new ToolStripSeparator());
+        var status = new MenuItem
+        {
+            Header = new StackPanel { Children = { _statusTitle, _statusDetail } },
+        };
+        status.SetResourceReference(FrameworkElement.StyleProperty, "TrayStatusItemStyle");
+
+        // the default action, which a left click also performs, is bold as in other tray menus
+        var open = CreateItem("Open NVibrance", (_, _) => ShowMainWindow());
+        open.FontWeight = FontWeights.SemiBold;
+
+        var exit = CreateItem("Exit", (_, _) =>
+        {
+            _exiting = true;
+            Application.Current.Shutdown();
+        });
+
+        menu.Items.Add(status);
+        menu.Items.Add(CreateSeparator());
+        menu.Items.Add(open);
+        menu.Items.Add(_pauseMenuItem);
         menu.Items.Add(_autostartMenuItem);
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Exit", null, (_, _) => Application.Current.Shutdown());
+        menu.Items.Add(CreateSeparator());
+        menu.Items.Add(exit);
 
-        UpdateAutostartChecked();
-        
+        menu.Opened += (_, _) =>
+        {
+            RefreshStatus();
+            UpdateAutostartChecked();
+        };
+
         return menu;
     }
-    
-    private void UpdateAutostartChecked()
+
+    private static MenuItem CreateItem(string header, RoutedEventHandler click)
+    {
+        var item = new MenuItem { Header = header };
+        item.SetResourceReference(FrameworkElement.StyleProperty, "TrayMenuItemStyle");
+        item.Click += click;
+        return item;
+    }
+
+    /// <summary>
+    /// Reacts to the checked state rather than Click: screen readers toggle the item through
+    /// UI Automation, which flips IsChecked without raising Click.
+    /// </summary>
+    private MenuItem CreateToggleItem(string header, Action<bool> toggled)
+    {
+        var item = new MenuItem { Header = header, IsCheckable = true };
+        item.SetResourceReference(FrameworkElement.StyleProperty, "TrayMenuItemStyle");
+        item.Checked += (_, _) => OnToggled(true);
+        item.Unchecked += (_, _) => OnToggled(false);
+        return item;
+
+        void OnToggled(bool isChecked)
+        {
+            if (!_syncingMenu)
+                toggled(isChecked);
+        }
+    }
+
+    /// <summary>Sets a toggle to reflect state without treating it as the user's choice.</summary>
+    private void SyncChecked(MenuItem item, bool isChecked)
+    {
+        _syncingMenu = true;
+        try
+        {
+            item.IsChecked = isChecked;
+        }
+        finally
+        {
+            _syncingMenu = false;
+        }
+    }
+
+    private static Separator CreateSeparator()
+    {
+        var separator = new Separator();
+        separator.SetResourceReference(FrameworkElement.StyleProperty, "TrayMenuSeparatorStyle");
+        return separator;
+    }
+
+    private void ShowMenu()
+    {
+        _menu.Placement = PlacementMode.MousePoint;
+        _menu.IsOpen = true;
+
+        // without owning the foreground, the menu would stay open after clicking elsewhere
+        if (PresentationSource.FromVisual(_menu) is HwndSource source)
+            NativeMethods.SetForegroundWindow(source.Handle);
+    }
+
+    private void SetPaused(bool paused)
+    {
+        if (_controller is not null)
+            _controller.IsPaused = paused;
+    }
+
+    // ---------------------------------------------------------------- status
+
+    private void OnStatusChanged(object? sender, EventArgs e) => RefreshStatus();
+
+    /// <summary>
+    /// Shows what is applied right now, in the menu's first line and the icon's tooltip,
+    /// so a working switch can be confirmed without opening the window.
+    /// </summary>
+    private void RefreshStatus()
+    {
+        var (title, detail) = DescribeStatus();
+
+        _statusTitle.Text = title;
+        _statusDetail.Text = detail;
+        SyncChecked(_pauseMenuItem, _controller?.IsPaused ?? false);
+
+        var tooltip = $"NVibrance\n{title} · {detail}";
+        _notifyIcon.Text = tooltip.Length > TooltipMaxLength ? tooltip[..(TooltipMaxLength - 1)] + "…" : tooltip;
+        _tooltipRefreshedAtUtc = DateTime.UtcNow;
+    }
+
+    private (string Title, string Detail) DescribeStatus()
+    {
+        if (_controller is { IsPaused: true })
+            return ("Paused", $"Desktop vibrance {ReadCurrentVibrance()} everywhere");
+
+        if (_controller?.ActiveProfile is { } profile)
+            return (profile.Name, $"Profile active · vibrance {profile.Vibrance}");
+
+        return ("Desktop", $"No profile active · vibrance {ReadCurrentVibrance()}");
+    }
+
+    private string ReadCurrentVibrance()
     {
         try
         {
-            _autostartMenuItem.Checked = AutoStartService.IsEnabled();
+            return _vibrance.GetCurrent().ToString();
+        }
+        catch (Exception ex)
+        {
+            Log.Debug($"Could not read vibrance for the tray status: {ex.Message}");
+            return "unavailable";
+        }
+    }
+
+    // the tooltip has no "about to show" event; hovering the icon is the closest signal
+    private void OnMouseMove(object? sender, MouseEventArgs e)
+    {
+        if (DateTime.UtcNow - _tooltipRefreshedAtUtc > TooltipRefreshInterval)
+            RefreshStatus();
+    }
+
+    // ---------------------------------------------------------------- autostart
+
+    private void UpdateAutostartChecked()
+    {
+        bool enabled;
+        try
+        {
+            enabled = AutoStartService.IsEnabled();
         }
         catch (Exception ex)
         {
             Log.Warn($"Could not read autostart state: {ex.Message}");
-            _autostartMenuItem.Checked = false;
+            enabled = false;
         }
+
+        SyncChecked(_autostartMenuItem, enabled);
     }
-    
-    private void AutostartMenuItem_Click(object? sender, EventArgs e)
+
+    private void SetAutostart(bool shouldEnable)
     {
         try
         {
-            var shouldEnable = _autostartMenuItem.Checked;
             // prefer published exe path; AutoStartService will resolve the best candidate
             AutoStartService.SetEnabled(shouldEnable);
             // reflect actual state (in case of failure)
@@ -107,41 +273,86 @@ public class TrayHost : IDisposable
         }
     }
 
+    // ---------------------------------------------------------------- window
+
     private void OnMouseClick(object? sender, MouseEventArgs e)
     {
         if (e.Button == MouseButtons.Left)
             ShowMainWindow();
+        else if (e.Button == MouseButtons.Right)
+            ShowMenu();
     }
 
-    private void ShowMainWindow()
+    public void ShowMainWindow()
     {
         var app = Application.Current;
 
-        if (app.MainWindow == null)
-            app.MainWindow = new MainWindow(_registry, _vibrance, _controller);
+        if (app.MainWindow is not MainWindow window)
+        {
+            window = new MainWindow(_registry, _vibrance, _controller);
+            window.HiddenToTray += (_, _) => ShowStillRunningHintOnce();
+            app.MainWindow = window;
+        }
 
-        if (!app.MainWindow.IsVisible)
-            app.MainWindow.Show();
+        if (!window.IsVisible)
+            window.Show();
 
-        if (app.MainWindow.WindowState == WindowState.Minimized)
-            app.MainWindow.WindowState = WindowState.Normal;
+        if (window.WindowState == WindowState.Minimized)
+            window.WindowState = WindowState.Normal;
 
-        app.MainWindow.Activate();
-        app.MainWindow.Topmost = true;
-        app.MainWindow.Topmost = false;
+        window.Activate();
+        window.Topmost = true;
+        window.Topmost = false;
+    }
+
+    /// <summary>
+    /// The first time the window is closed, says that NVibrance kept running, so the app
+    /// doesn't seem to have quit (or crashed). Shown once per user.
+    /// </summary>
+    private void ShowStillRunningHintOnce()
+    {
+        if (_exiting)
+            return;
+
+        var marker = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "NVibrance",
+            "tray-hint-shown");
+
+        try
+        {
+            if (File.Exists(marker))
+                return;
+
+            Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
+            File.WriteAllText(marker, string.Empty);
+        }
+        catch (Exception ex)
+        {
+            // without the marker the hint would repeat on every close; skip it instead
+            Log.Warn($"Could not record the tray hint: {ex.Message}");
+            return;
+        }
+
+        var text = _controller is { IsPaused: true }
+            ? "Switching is paused. Right-click the tray icon to resume or exit."
+            : "Profiles keep switching in the background. Right-click the tray icon to pause or exit.";
+
+        _notifyIcon.ShowBalloonTip(5000, "NVibrance is still running", text, ToolTipIcon.None);
     }
 
     public void Dispose()
     {
         try
         {
-            if (_notifyIcon?.ContextMenuStrip != null)
-                _notifyIcon.ContextMenuStrip.Opening -= _contextMenuOpeningHandler;
+            if (_controller is not null)
+                _controller.StatusChanged -= OnStatusChanged;
 
-            _autostartMenuItem.Click -= AutostartMenuItem_Click;
-            _notifyIcon?.MouseClick -= OnMouseClick;
-            _notifyIcon?.Visible = false;
-            _notifyIcon?.Dispose();
+            _menu.IsOpen = false;
+            _notifyIcon.MouseClick -= OnMouseClick;
+            _notifyIcon.MouseMove -= OnMouseMove;
+            _notifyIcon.Visible = false;
+            _notifyIcon.Dispose();
         }
         catch (Exception ex)
         {

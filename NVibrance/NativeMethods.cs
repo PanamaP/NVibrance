@@ -30,6 +30,24 @@ public static class NativeMethods
         DwmwcpRound = 2,
     }
 
+    // -------- DWM interop for the Mica backdrop (Windows 11 22H2+) --------
+    public const int DwmwaUseImmersiveDarkMode = 20;
+    public const int DwmwaSystemBackdropType = 38;
+    public const int DwmsbtMainWindow = 2; // Mica
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Margins
+    {
+        public int Left, Right, Top, Bottom;
+    }
+
+    /// <summary>
+    /// Extends the DWM frame into the client area; with -1 margins the whole client area
+    /// becomes frame, which is what lets a system backdrop show through it.
+    /// </summary>
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref Margins margins);
+
     /// <summary>
     /// Sets a specified attribute for a window using the Desktop Window Manager (DWM) API.
     /// This function allows customization of window appearance and behavior on Windows OS.
@@ -78,6 +96,13 @@ public static class NativeMethods
     /// </summary>
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
+
+    /// <summary>
+    ///   Brings a window to the foreground. A menu opened from the tray must own the
+    ///   foreground, or clicking elsewhere would not dismiss it.
+    /// </summary>
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
 
     /// <summary>
     ///   Access right that allows QueryFullProcessImageName even on protected

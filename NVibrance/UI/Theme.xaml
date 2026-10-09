@@ -1,0 +1,145 @@
+<!-- File: `NVibrance/UI/Theme.xaml` — app-wide tokens and the tray menu, which exists without the window -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- ===== Tokens: every colour lives here; Theme.cs swaps them for system colours in high contrast ===== -->
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#0F1115" />
+    <SolidColorBrush x:Key="LayerBrush" Color="#B3151922" />
+    <SolidColorBrush x:Key="LayerBorderBrush" Color="#1AFFFFFF" />
+    <SolidColorBrush x:Key="CardBrush" Color="#0DFFFFFF" />
+    <SolidColorBrush x:Key="CardBorderBrush" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="TextBrush" Color="#E7EAF0" />
+    <SolidColorBrush x:Key="MutedBrush" Color="#AAB2C5" />
+    <SolidColorBrush x:Key="SelectedTextBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="HoverFillBrush" Color="#12FFFFFF" />
+    <SolidColorBrush x:Key="PressedFillBrush" Color="#0AFFFFFF" />
+    <SolidColorBrush x:Key="SelectedFillBrush" Color="#1CFFFFFF" />
+    <SolidColorBrush x:Key="BadgeBrush" Color="#12FFFFFF" />
+    <SolidColorBrush x:Key="ControlFillBrush" Color="#17FFFFFF" />
+    <SolidColorBrush x:Key="ControlHoverBrush" Color="#21FFFFFF" />
+    <SolidColorBrush x:Key="ControlPressedBrush" Color="#0FFFFFFF" />
+    <SolidColorBrush x:Key="ControlBorderBrush" Color="#17FFFFFF" />
+    <!-- accent is the cyan from the logo's slider -->
+    <SolidColorBrush x:Key="AccentBrush" Color="#3CC8E8" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#5FD3EE" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="#33AECB" />
+    <SolidColorBrush x:Key="OnAccentBrush" Color="#06181D" />
+    <SolidColorBrush x:Key="TrackBrush" Color="#2EFFFFFF" />
+    <SolidColorBrush x:Key="ThumbBrush" Color="#1E232D" />
+    <SolidColorBrush x:Key="ThumbBorderBrush" Color="#3A4252" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="#6CCB8A" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#FF99A4" />
+    <SolidColorBrush x:Key="CloseHoverBrush" Color="#C42B1C" />
+    <SolidColorBrush x:Key="CloseHoverTextBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="PopupBrush" Color="#1B2029" />
+    <SolidColorBrush x:Key="PopupBorderBrush" Color="#2C3342" />
+    <SolidColorBrush x:Key="InputBrush" Color="#0DFFFFFF" />
+    <SolidColorBrush x:Key="FocusRingBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="ScrollThumbBrush" Color="#40FFFFFF" />
+
+    <!-- Segoe UI Variable is Windows 11's optically sized system face; Segoe UI is the fallback -->
+    <FontFamily x:Key="TextFont">Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="DisplayFont">Segoe UI Variable Display, Segoe UI</FontFamily>
+    <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
+    <!-- ===== Tray menu: a WPF menu so it matches the window instead of WinForms' light one ===== -->
+    <Style x:Key="TrayMenuStyle" TargetType="{x:Type ContextMenu}">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="HasDropShadow" Value="False" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="FontFamily" Value="{DynamicResource TextFont}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ContextMenu}">
+                    <!-- margin leaves room for the shadow inside the transparent popup -->
+                    <Border Margin="12"
+                            MinWidth="260"
+                            Padding="4"
+                            Background="{DynamicResource PopupBrush}"
+                            BorderBrush="{DynamicResource PopupBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="24" ShadowDepth="6" Direction="270" Opacity="0.45" Color="Black" />
+                        </Border.Effect>
+                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="TrayMenuItemStyle" TargetType="{x:Type MenuItem}">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type MenuItem}">
+                    <Border x:Name="Bd"
+                            MinHeight="34"
+                            Padding="10,0,16,0"
+                            Background="Transparent"
+                            CornerRadius="4"
+                            SnapsToDevicePixels="True">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="26" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="Check"
+                                       VerticalAlignment="Center"
+                                       FontFamily="{DynamicResource IconFont}"
+                                       FontSize="12"
+                                       Text="&#xE73E;"
+                                       Visibility="Hidden" />
+                            <ContentPresenter Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              ContentSource="Header"
+                                              RecognizesAccessKey="True" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverFillBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PressedFillBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- the status line at the top: information, not a command, so it never highlights -->
+    <Style x:Key="TrayStatusItemStyle" TargetType="{x:Type MenuItem}">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="IsHitTestVisible" Value="False" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type MenuItem}">
+                    <ContentPresenter Margin="12,8,16,8" ContentSource="Header" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="TrayMenuSeparatorStyle" TargetType="{x:Type Separator}">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Separator}">
+                    <Border Height="1" Margin="-4,4" Background="{DynamicResource PopupBorderBrush}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

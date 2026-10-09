@@ -21,8 +21,10 @@ public class TrayHost : IDisposable
     private readonly ProgramRegistry _registry;
     private readonly IVibranceService _vibrance;
     private readonly Focus.VibranceController? _controller;
+    private readonly UpdateService? _updates;
 
     private readonly ContextMenu _menu;
+    private readonly MenuItem _updateMenuItem;
     private readonly TextBlock _statusTitle = new() { FontWeight = FontWeights.SemiBold };
     private readonly TextBlock _statusDetail = new() { FontSize = 12, Margin = new Thickness(0, 2, 0, 0) };
     private readonly MenuItem _pauseMenuItem;
@@ -32,11 +34,13 @@ public class TrayHost : IDisposable
     private bool _exiting;
     private bool _syncingMenu;
 
-    public TrayHost(ProgramRegistry registry, IVibranceService vibrance, Focus.VibranceController? controller = null)
+    public TrayHost(ProgramRegistry registry, IVibranceService vibrance, Focus.VibranceController? controller = null,
+        UpdateService? updates = null)
     {
         _registry = registry;
         _vibrance = vibrance;
         _controller = controller;
+        _updates = updates;
 
         _statusDetail.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
 
@@ -44,6 +48,10 @@ public class TrayHost : IDisposable
         _pauseMenuItem.Visibility = controller is null ? Visibility.Collapsed : Visibility.Visible;
 
         _autostartMenuItem = CreateToggleItem("Start with Windows", SetAutostart);
+
+        // hidden until an update has been downloaded
+        _updateMenuItem = CreateItem("Restart to update", (_, _) => RestartToUpdate());
+        _updateMenuItem.Visibility = Visibility.Collapsed;
 
         _menu = BuildMenu();
 
@@ -56,9 +64,13 @@ public class TrayHost : IDisposable
 
         _notifyIcon.MouseClick += OnMouseClick;
         _notifyIcon.MouseMove += OnMouseMove;
+        _notifyIcon.BalloonTipClicked += OnBalloonTipClicked;
 
         if (_controller is not null)
             _controller.StatusChanged += OnStatusChanged;
+
+        if (_updates is not null)
+            _updates.UpdateReady += OnUpdateReady;
 
         RefreshStatus();
     }
@@ -105,11 +117,13 @@ public class TrayHost : IDisposable
 
         menu.Items.Add(status);
         menu.Items.Add(CreateSeparator());
+        menu.Items.Add(_updateMenuItem);
         menu.Items.Add(open);
         menu.Items.Add(_pauseMenuItem);
         menu.Items.Add(_autostartMenuItem);
         menu.Items.Add(CreateSeparator());
         menu.Items.Add(exit);
+        menu.Items.Add(CreateVersionFooter());
 
         menu.Opened += (_, _) =>
         {
@@ -161,6 +175,17 @@ public class TrayHost : IDisposable
         }
     }
 
+    /// <summary>A quiet last line, so "which version am I on?" has an answer next to Exit.</summary>
+    private static MenuItem CreateVersionFooter()
+    {
+        var text = new TextBlock { Text = $"NVibrance {AppInfo.Version}", FontSize = 12 };
+        text.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+
+        var item = new MenuItem { Header = text };
+        item.SetResourceReference(FrameworkElement.StyleProperty, "TrayStatusItemStyle");
+        return item;
+    }
+
     private static Separator CreateSeparator()
     {
         var separator = new Separator();
@@ -200,7 +225,7 @@ public class TrayHost : IDisposable
         _statusDetail.Text = detail;
         SyncChecked(_pauseMenuItem, _controller?.IsPaused ?? false);
 
-        var tooltip = $"NVibrance\n{title} · {detail}";
+        var tooltip = $"NVibrance {AppInfo.Version}\n{title} · {detail}";
         _notifyIcon.Text = tooltip.Length > TooltipMaxLength ? tooltip[..(TooltipMaxLength - 1)] + "…" : tooltip;
         _tooltipRefreshedAtUtc = DateTime.UtcNow;
     }
@@ -234,6 +259,66 @@ public class TrayHost : IDisposable
     {
         if (DateTime.UtcNow - _tooltipRefreshedAtUtc > TooltipRefreshInterval)
             RefreshStatus();
+    }
+
+    // ---------------------------------------------------------------- updates
+
+    private void OnUpdateReady(object? sender, EventArgs e)
+    {
+        var version = _updates?.ReadyUpdate?.Version.ToString();
+        _updateMenuItem.Header = $"Restart to update to {version}";
+        _updateMenuItem.Visibility = Visibility.Visible;
+
+        if (version is not null)
+            NotifyUpdateOnce(version);
+    }
+
+    /// <summary>
+    /// Updates install only when the user chooses to, and NVibrance usually sits hidden in the
+    /// tray, so say so once per version; clicking the notification opens the window, which
+    /// offers Restart and the release notes. Windows' Do Not Disturb holds it during games.
+    /// </summary>
+    private void NotifyUpdateOnce(string version)
+    {
+        var marker = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "NVibrance",
+            "update-notified");
+
+        try
+        {
+            if (File.Exists(marker) && File.ReadAllText(marker).Trim() == version)
+                return;
+
+            Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
+            File.WriteAllText(marker, version);
+        }
+        catch (Exception ex)
+        {
+            // without the marker the notification would repeat every launch; skip it instead
+            Log.Warn($"Could not record the update notification: {ex.Message}");
+            return;
+        }
+
+        _notifyIcon.ShowBalloonTip(
+            8000,
+            $"NVibrance {version} is ready",
+            "Click to see what's new and restart to update when it suits you.",
+            ToolTipIcon.None);
+    }
+
+    /// <summary>
+    /// Starts Velopack's updater, then exits normally (saving profiles and restoring the
+    /// desktop vibrance); the updater applies the update and starts the new version.
+    /// </summary>
+    private void RestartToUpdate()
+    {
+        var windowOpen = Application.Current.MainWindow is { IsVisible: true };
+        if (_updates?.PrepareRestartToUpdate(startMinimized: !windowOpen) != true)
+            return;
+
+        _exiting = true;
+        Application.Current.Shutdown();
     }
 
     // ---------------------------------------------------------------- autostart
@@ -275,6 +360,9 @@ public class TrayHost : IDisposable
 
     // ---------------------------------------------------------------- window
 
+    // both notifications (update ready, still running) lead to the window
+    private void OnBalloonTipClicked(object? sender, EventArgs e) => ShowMainWindow();
+
     private void OnMouseClick(object? sender, MouseEventArgs e)
     {
         if (e.Button == MouseButtons.Left)
@@ -289,8 +377,9 @@ public class TrayHost : IDisposable
 
         if (app.MainWindow is not MainWindow window)
         {
-            window = new MainWindow(_registry, _vibrance, _controller);
+            window = new MainWindow(_registry, _vibrance, _controller, _updates);
             window.HiddenToTray += (_, _) => ShowStillRunningHintOnce();
+            window.RestartToUpdateRequested += (_, _) => RestartToUpdate();
             app.MainWindow = window;
         }
 
@@ -347,10 +436,13 @@ public class TrayHost : IDisposable
         {
             if (_controller is not null)
                 _controller.StatusChanged -= OnStatusChanged;
+            if (_updates is not null)
+                _updates.UpdateReady -= OnUpdateReady;
 
             _menu.IsOpen = false;
             _notifyIcon.MouseClick -= OnMouseClick;
             _notifyIcon.MouseMove -= OnMouseMove;
+            _notifyIcon.BalloonTipClicked -= OnBalloonTipClicked;
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
         }

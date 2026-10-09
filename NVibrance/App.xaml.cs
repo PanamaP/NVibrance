@@ -18,6 +18,7 @@ public partial class App
 
     private readonly ProgramRegistry _registry = new();
     private readonly VibranceService _vibrance = new();
+    private readonly UpdateService _updates = new();
 
     private Type? _stormExceptionType;
     private DateTime _stormWindowStartUtc;
@@ -51,10 +52,11 @@ public partial class App
 
         _controller = new VibranceController(_hook, _registry, _vibrance);
         _poller = new ForegroundPoller(_controller);
-        _tray = new TrayHost(_registry, _vibrance, _controller);
+        _tray = new TrayHost(_registry, _vibrance, _controller, _updates);
 
         // a game may already be in the foreground when NVibrance autostarts
         _controller.EvaluateCurrentForeground();
+        _updates.Start();
 
         if (e.Args.Contains("--minimized"))
         {
@@ -63,6 +65,9 @@ public partial class App
 
         _tray.ShowMainWindow();
     }
+
+    /// <summary>Shows the window when NVibrance is launched again while already running.</summary>
+    internal void ShowMainWindow() => _tray?.ShowMainWindow();
 
     private void RegisterGlobalExceptionHandlers()
     {
@@ -120,6 +125,7 @@ public partial class App
         _controller?.Dispose();
         _hook?.Dispose();
         _tray?.Dispose();
+        _updates.Dispose();
         base.OnExit(e);
     }
 }

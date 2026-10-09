@@ -37,12 +37,14 @@ public partial class MainWindow
 
     private MainViewModel Vm => (MainViewModel)DataContext;
 
-    public MainWindow(ProgramRegistry registry, IVibranceService vibrance, VibranceController? controller = null)
+    public MainWindow(ProgramRegistry registry, IVibranceService vibrance, VibranceController? controller = null,
+        UpdateService? updates = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
 
         InitializeComponent();
-        DataContext = new MainViewModel(registry, vibrance, controller);
+        DataContext = new MainViewModel(registry, vibrance, controller, updates);
+        VersionText.Text = AppInfo.Version;
 
         Closing += OnClosingHide;
         Activated += (_, _) => RefreshOnActivate();
@@ -72,6 +74,9 @@ public partial class MainWindow
 
     /// <summary>Raised when the window is closed to the tray rather than exiting.</summary>
     public event EventHandler? HiddenToTray;
+
+    /// <summary>Raised when the user asks to restart into a downloaded update.</summary>
+    public event EventHandler? RestartToUpdateRequested;
 
     // ---------------------------------------------------------------- window chrome
 
@@ -239,6 +244,23 @@ public partial class MainWindow
     // ---------------------------------------------------------------- sidebar
 
     private void ResumeSwitching_Click(object sender, RoutedEventArgs e) => Vm.IsSwitchingPaused = false;
+
+    private void RestartToUpdate_Click(object sender, RoutedEventArgs e)
+        => RestartToUpdateRequested?.Invoke(this, EventArgs.Empty);
+
+    private void ReleaseNotes_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Could not open the release notes: {ex.Message}");
+        }
+
+        e.Handled = true;
+    }
 
     private void EntriesList_KeyDown(object sender, KeyEventArgs e)
     {

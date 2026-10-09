@@ -8,16 +8,26 @@ on:
 permissions:
   contents: write
 
+env:
+  # Velopack package id. Permanent: changing it breaks updates for installed copies.
+  # Deliberately not "NVibrance", which would install into %LOCALAPPDATA%\NVibrance,
+  # the folder that already holds NVibrance's logs.
+  PACK_ID: PanamaP.NVibrance
+  # must match the Velopack package version in NVibrance/NVibrance.csproj
+  VPK_VERSION: 1.2.158
+
+# Actions are pinned to full commit SHAs, not tags: a tag can be moved to different code, and
+# this workflow publishes what every installed copy of NVibrance downloads as an update.
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: "10.0.x"
 
@@ -36,25 +46,44 @@ jobs:
       - name: Test
         run: dotnet test NVibrance.slnx -c Release --no-build
 
-      # -------- Framework-dependent --------
-      - name: Publish (framework-dependent)
-        run: dotnet publish NVibrance/NVibrance.csproj -c Release -r win-x64 --self-contained false /p:PublishSingleFile=true /p:DebugType=None /p:DebugSymbols=false /p:Version=${{ env.VERSION }} -o publish/framework
-      
-      - name: Zip framework-dependent
-        run: Compress-Archive -Path publish\framework\* -DestinationPath NVibrance-win-x64.zip
+      - name: Publish
+        run: dotnet publish NVibrance/NVibrance.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:DebugType=None /p:DebugSymbols=false /p:Version=${{ env.VERSION }} -o publish
 
-      # -------- Self-contained --------
-      - name: Publish (self-contained)
-        run: dotnet publish NVibrance/NVibrance.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:DebugType=None /p:DebugSymbols=false /p:Version=${{ env.VERSION }} -o publish/selfcontained
-         
-      - name: Zip self-contained
-        run: Compress-Archive -Path publish\selfcontained\* -DestinationPath NVibrance-win-x64-selfcontained.zip
+      # -------- Installer and update packages (Velopack) --------
+      - name: Install vpk
+        run: dotnet tool install -g vpk --version ${{ env.VPK_VERSION }}
+
+      # The previous release's package lets this one ship as a small delta update.
+      # The first Velopack release has none to download, so a failure here is fine.
+      - name: Download previous release
+        continue-on-error: true
+        run: vpk download github --repoUrl https://github.com/${{ github.repository }} --token ${{ secrets.GITHUB_TOKEN }} -o releases
+
+      - name: Pack
+        run: >
+          vpk pack --packId ${{ env.PACK_ID }} --packVersion ${{ env.VERSION }} --packDir publish
+          --mainExe NVibrance.exe --packTitle NVibrance --packAuthors PanamaP
+          --icon NVibrance/UI/Assets/logo.ico --shortcuts StartMenuRoot -o releases
+
+      # Velopack names downloads after the package id; give people friendlier names.
+      # Updates never look at these two files, only at the .nupkg and releases.win.json.
+      - name: Name downloads
+        run: |
+          Copy-Item releases/${{ env.PACK_ID }}-win-Setup.exe NVibrance-Setup.exe
+          Copy-Item releases/${{ env.PACK_ID }}-win-Portable.zip NVibrance-Portable.zip
 
       # -------- Release --------
+      # Only this version's packages are attached; the previous one downloaded above for
+      # the delta already lives on its own release.
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: |
-            NVibrance-win-x64.zip
-            NVibrance-win-x64-selfcontained.zip
+            NVibrance-Setup.exe
+            NVibrance-Portable.zip
+            releases/releases.win.json
+            releases/assets.win.json
+            releases/RELEASES
+            releases/${{ env.PACK_ID }}-${{ env.VERSION }}-full.nupkg
+            releases/${{ env.PACK_ID }}-${{ env.VERSION }}-delta.nupkg
           generate_release_notes: true

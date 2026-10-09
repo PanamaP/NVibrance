@@ -704,6 +704,10 @@
                            VerticalAlignment="Center"
                            FontSize="12"
                            Text="NVibrance" />
+                <TextBlock x:Name="VersionText"
+                           Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Style="{StaticResource CaptionText}" />
             </StackPanel>
 
             <StackPanel Grid.Row="0"
@@ -762,29 +766,63 @@
                     </TextBlock.Style>
                 </TextBlock>
 
-                <!-- pause is set from the tray; the window says so, and offers the way back -->
-                <Border Grid.Row="1"
-                        Margin="0,8,0,0"
-                        Padding="12,6,6,6"
-                        Style="{StaticResource SettingsCard}"
-                        Visibility="{Binding IsSwitchingPaused, Converter={StaticResource BoolToVisibility}}">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock Style="{StaticResource BodyStrongText}" FontSize="12" Text="Switching paused" />
-                            <TextBlock Style="{StaticResource CaptionText}" TextTrimming="CharacterEllipsis" Text="Desktop value in use" />
-                        </StackPanel>
-                        <Button Grid.Column="1"
-                                Style="{StaticResource SubtleButtonStyle}"
-                                Foreground="{DynamicResource AccentBrush}"
-                                FontWeight="SemiBold"
-                                Content="Resume"
-                                Click="ResumeSwitching_Click" />
-                    </Grid>
-                </Border>
+                <StackPanel Grid.Row="1">
+                    <!-- a downloaded update waits for the user's restart, never forces one -->
+                    <Border Margin="0,8,0,0"
+                            Padding="12,6,6,6"
+                            Style="{StaticResource SettingsCard}"
+                            Visibility="{Binding IsUpdateReady, Converter={StaticResource BoolToVisibility}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource BodyStrongText}" FontSize="12" Text="Update ready" />
+                                <!-- the release notes are one click away, so users can see what they'd install -->
+                                <TextBlock Style="{StaticResource CaptionText}" TextTrimming="CharacterEllipsis">
+                                    <Run Text="Version" />
+                                    <Run Text="{Binding ReadyUpdateVersion, Mode=OneWay}" />
+                                    <Run Text="·" />
+                                    <Hyperlink NavigateUri="{Binding ReleaseNotesUrl, Mode=OneWay}"
+                                               Foreground="{DynamicResource AccentBrush}"
+                                               TextDecorations="{x:Null}"
+                                               RequestNavigate="ReleaseNotes_RequestNavigate">What's new</Hyperlink>
+                                </TextBlock>
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Style="{StaticResource SubtleButtonStyle}"
+                                    Foreground="{DynamicResource AccentBrush}"
+                                    FontWeight="SemiBold"
+                                    Content="Restart"
+                                    AutomationProperties.Name="Restart to update"
+                                    Click="RestartToUpdate_Click" />
+                        </Grid>
+                    </Border>
+
+                    <!-- pause is set from the tray; the window says so, and offers the way back -->
+                    <Border Margin="0,8,0,0"
+                            Padding="12,6,6,6"
+                            Style="{StaticResource SettingsCard}"
+                            Visibility="{Binding IsSwitchingPaused, Converter={StaticResource BoolToVisibility}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource BodyStrongText}" FontSize="12" Text="Switching paused" />
+                                <TextBlock Style="{StaticResource CaptionText}" TextTrimming="CharacterEllipsis" Text="Desktop value in use" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Style="{StaticResource SubtleButtonStyle}"
+                                    Foreground="{DynamicResource AccentBrush}"
+                                    FontWeight="SemiBold"
+                                    Content="Resume"
+                                    Click="ResumeSwitching_Click" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
 
                 <Button x:Name="AddButton"
                         Grid.Row="2"

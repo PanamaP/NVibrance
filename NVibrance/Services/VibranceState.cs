@@ -16,6 +16,12 @@ public sealed class VibranceState
     private int? PreviousValue { get; set; }
 
     /// <summary>
+    /// The desktop value that restore will return to while an override is active;
+    /// null when no override is active (the driver then holds the desktop value).
+    /// </summary>
+    public int? CapturedValue => IsOverridden ? PreviousValue : null;
+
+    /// <summary>
     /// Capture the current vibrance value if not already captured.
     /// </summary>
     public void Capture(int current)

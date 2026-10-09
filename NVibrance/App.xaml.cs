@@ -32,6 +32,7 @@ public partial class App
 
         Log.Info($"NVibrance starting, args=[{string.Join(" ", e.Args)}]");
         RegisterGlobalExceptionHandlers();
+        Theme.Initialize(Resources);
 
         // the app may have been moved since autostart was enabled
         AutoStartService.SyncIfEnabled();
@@ -60,9 +61,7 @@ public partial class App
             return;
         }
 
-        var main = new MainWindow(_registry, _vibrance, _controller);
-        MainWindow = main;
-        main.Show();
+        _tray.ShowMainWindow();
     }
 
     private void RegisterGlobalExceptionHandlers()

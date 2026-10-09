@@ -24,7 +24,7 @@ public static class ExeIconLoader
             var source = Imaging.CreateBitmapSourceFromHIcon(
                 handle,
                 Int32Rect.Empty,
-                BitmapSizeOptions.FromWidthAndHeight(16, 16));
+                BitmapSizeOptions.FromWidthAndHeight(32, 32)); // sharp in the 32px detail header; lists downscale
 
             source.Freeze();
             return source;

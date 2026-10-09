@@ -6,7 +6,11 @@ namespace NVibrance;
 
 public static class RunningProcessScanner
 {
-    public static IReadOnlyList<RunningProgram> GetUserProcesses()
+    /// <param name="loadIcons">
+    /// False leaves <see cref="RunningProgram.Icon"/> null, for scans run off the UI thread;
+    /// the caller then loads icons where it creates its UI.
+    /// </param>
+    public static IReadOnlyList<RunningProgram> GetUserProcesses(bool loadIcons = true)
     {
         var result = new List<RunningProgram>();
 
@@ -29,7 +33,7 @@ public static class RunningProcessScanner
                 result.Add(new RunningProgram(
                     Name: process.ProcessName,
                     ExePath: exePath,
-                    Icon: ExeIconLoader.TryLoad(exePath)));
+                    Icon: loadIcons ? ExeIconLoader.TryLoad(exePath) : null));
             }
             catch (Exception ex)
             {

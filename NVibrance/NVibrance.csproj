@@ -46,7 +46,7 @@
 
     <ItemGroup>
       <PackageReference Include="NvAPIWrapper.Net" Version="0.8.1.101" />
-      <!-- must match the vpk tool version in .github/workflows/release.yml -->
+      <!-- release.yml installs the vpk tool at this same version -->
       <PackageReference Include="Velopack" Version="1.2.158" />
     </ItemGroup>
 

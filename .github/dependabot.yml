@@ -19,10 +19,8 @@ updates:
       interval: monthly
     cooldown:
       default-days: 14
-    ignore:
-      # Velopack must match the vpk tool version in release.yml (VPK_VERSION),
-      # which Dependabot can't update; upgrade both together by hand.
-      - dependency-name: Velopack
+    # Velopack is included: release.yml reads its version from the csproj to install
+    # the matching vpk tool, so updating the package here is all it takes.
     groups:
       packages:
         patterns: ["*"]

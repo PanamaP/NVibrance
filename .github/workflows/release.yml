@@ -13,8 +13,6 @@ env:
   # Deliberately not "NVibrance", which would install into %LOCALAPPDATA%\NVibrance,
   # the folder that already holds NVibrance's logs.
   PACK_ID: PanamaP.NVibrance
-  # must match the Velopack package version in NVibrance/NVibrance.csproj
-  VPK_VERSION: 1.2.158
 
 # Actions are pinned to full commit SHAs, not tags: a tag can be moved to different code, and
 # this workflow publishes what every installed copy of NVibrance downloads as an update.
@@ -50,8 +48,15 @@ jobs:
         run: dotnet publish NVibrance/NVibrance.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:DebugType=None /p:DebugSymbols=false /p:Version=${{ env.VERSION }} -o publish
 
       # -------- Installer and update packages (Velopack) --------
+      # vpk must be the same version as the Velopack package the app references, so take it
+      # from the project file: one place to change, which Dependabot keeps up to date.
       - name: Install vpk
-        run: dotnet tool install -g vpk --version ${{ env.VPK_VERSION }}
+        run: |
+          [xml]$proj = Get-Content NVibrance/NVibrance.csproj
+          $version = $proj.Project.ItemGroup.PackageReference |
+            Where-Object Include -eq 'Velopack' | Select-Object -ExpandProperty Version
+          if (-not $version) { throw "No Velopack PackageReference found in NVibrance.csproj" }
+          dotnet tool install -g vpk --version $version
 
       # The previous release's package lets this one ship as a small delta update.
       # The first Velopack release has none to download, so a failure here is fine.

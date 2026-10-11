@@ -425,7 +425,7 @@ public class VibranceControllerTests : IDisposable
         using var controller = CreateController();
 
         controller.Preview(70);
-        _registry.FindByExePath(ApexPath)!.Vibrance = 90; // commits a re-evaluation
+        _registry.FindByExePath(ApexPath)!.Vibrance = 90;
 
         Assert.Equal(new[] { (Primary, 70) }, _vibrance.SetCalls);
         Assert.Equal(70, _vibrance.Values[Primary]);

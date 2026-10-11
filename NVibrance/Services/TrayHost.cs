@@ -280,7 +280,7 @@ public class TrayHost : IDisposable
     /// </summary>
     private void NotifyUpdateOnce(string version)
     {
-        if (!TryRecordFirstTime("update-notified", version))
+        if (!ShouldShowOnce("update-notified", version))
             return;
 
         _notifyIcon.ShowBalloonTip(
@@ -386,7 +386,7 @@ public class TrayHost : IDisposable
         if (_exiting)
             return;
 
-        if (!TryRecordFirstTime("tray-hint-shown", string.Empty))
+        if (!ShouldShowOnce("tray-hint-shown", string.Empty))
             return;
 
         var text = _controller is { IsPaused: true }
@@ -396,16 +396,11 @@ public class TrayHost : IDisposable
         _notifyIcon.ShowBalloonTip(5000, "NVibrance is still running", text, ToolTipIcon.None);
     }
 
-    /// <summary>
-    /// Records <paramref name="value"/> in a marker file and returns true the first time,
-    /// false once it is recorded. Also false when the marker can't be written, since the
-    /// notice would otherwise repeat on every launch.
-    /// </summary>
-    private static bool TryRecordFirstTime(string marker, string value)
+    private static bool ShouldShowOnce(string marker, string value)
     {
         try
         {
-            var path = Path.Combine(AppInfo.DataDirectory, marker);
+            var path = Path.Combine(AppInfo.EnsureDataDirectory(), marker);
             if (File.Exists(path) && File.ReadAllText(path).Trim() == value)
                 return false;
 

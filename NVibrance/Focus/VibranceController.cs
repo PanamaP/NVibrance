@@ -55,7 +55,7 @@ public sealed class VibranceController : IDisposable
             {
                 _debounce.Cancel();
                 _pendingTarget = null;
-                CommitPending(); // restores the desktop value, unless a preview is showing
+                Commit();
             }
             else
             {
@@ -166,7 +166,7 @@ public sealed class VibranceController : IDisposable
         // (game → overlay → game) produces a single NVAPI write.
         _pendingTarget = target is null ? null : (target, display);
         _lastTarget = target;
-        _debounce.Schedule(CommitPending);
+        _debounce.Schedule(Commit);
     }
 
     /// <summary>
@@ -200,7 +200,7 @@ public sealed class VibranceController : IDisposable
         var (hwnd, _) = _getForeground();
         var display = hwnd == IntPtr.Zero ? _vibrance.PrimaryDisplay : _resolveDisplay(hwnd);
         _preview = (display, value);
-        CommitPending();
+        Commit();
     }
 
     /// <summary>Ends a preview, returning to the foreground window's profile or the desktop value.</summary>
@@ -209,10 +209,10 @@ public sealed class VibranceController : IDisposable
         if (_preview is null) return;
 
         _preview = null;
-        CommitPending();
+        Commit();
     }
 
-    private void CommitPending()
+    private void Commit()
     {
         try
         {

@@ -122,7 +122,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>Stops showing an edited profile's value on screen.</summary>
     public void EndPreview() => _controller?.EndPreview();
 
     public ProgramProfile? SelectedProfile => SelectedEntry as ProgramProfile;
@@ -264,7 +263,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            // NVAPI unavailable (non-NVIDIA GPU, driver update in progress): HasDisplay stays false
             Log.Error("Failed to read displays from NVAPI.", ex);
         }
     }

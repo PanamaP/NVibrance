@@ -11,8 +11,7 @@ public static class AppInfo
     /// </summary>
     public static string Version { get; } = ReadVersion();
 
-    /// <summary>The NVibrance folder in %APPDATA%, holding profiles and first-run markers; created on use.</summary>
-    public static string DataDirectory => Directory.CreateDirectory(
+    public static string EnsureDataDirectory() => Directory.CreateDirectory(
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NVibrance")).FullName;
 
     private static string ReadVersion()

@@ -85,7 +85,7 @@ public sealed class ProgramRegistry : IDisposable
     // ---- persistence ----
 
     private string GetProfilesPath()
-        => _profilesPathOverride ?? Path.Combine(AppInfo.DataDirectory, "profiles.json");
+        => _profilesPathOverride ?? Path.Combine(AppInfo.EnsureDataDirectory(), "profiles.json");
 
     public void LoadFromDisk()
     {
@@ -102,7 +102,6 @@ public sealed class ProgramRegistry : IDisposable
                 json,
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
 
-            // detach existing handlers before clearing
             foreach (var existing in _profiles.ToArray())
                 DetachProfile(existing);
 

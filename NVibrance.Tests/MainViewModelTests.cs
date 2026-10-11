@@ -15,6 +15,7 @@ public class MainViewModelTests : IDisposable
 
     private readonly ProgramRegistry _registry;
     private readonly FakeVibranceService _vibrance = new();
+    private VibranceController? _controller;
 
     public MainViewModelTests()
     {
@@ -24,6 +25,7 @@ public class MainViewModelTests : IDisposable
 
     public void Dispose()
     {
+        _controller?.Dispose();
         _registry.Dispose();
         Directory.Delete(_dir, recursive: true);
     }
@@ -229,6 +231,94 @@ public class MainViewModelTests : IDisposable
         Assert.Equal(new[] { (Primary, 90), (Primary, 50) }, _vibrance.SetCalls);
     }
 
+    private (MainViewModel Vm, ManualScheduler PreviewEnd) CreateEditingProfile()
+    {
+        _registry.Add(new ProgramProfile("A", @"C:\Games\A.exe", 70));
+        _controller = new VibranceController(
+            hook: null, registry: _registry, vibrance: _vibrance,
+            debounce: new ImmediateScheduler(), getForeground: () => (IntPtr.Zero, 0u));
+        var previewEnd = new ManualScheduler();
+        var vm = new MainViewModel(_registry, _vibrance, _controller, previewEnd: previewEnd);
+        vm.SelectedEntry = vm.Entries[1];
+        return (vm, previewEnd);
+    }
+
+    [Fact]
+    public void AnEditWithoutTheThumbHeld_EndsItsPreviewAfterTheDelay()
+    {
+        var (vm, previewEnd) = CreateEditingProfile();
+
+        vm.DetailVibrance = 90;
+        Assert.Equal(new[] { (Primary, 90) }, _vibrance.SetCalls);
+
+        previewEnd.Fire();
+        Assert.Equal(new[] { (Primary, 90), (Primary, 50) }, _vibrance.SetCalls);
+    }
+
+    [Fact]
+    public void WhileTheThumbIsHeld_ThePreviewStays_UntilAfterItIsReleased()
+    {
+        var (vm, previewEnd) = CreateEditingProfile();
+
+        vm.BeginAdjust();
+        vm.DetailVibrance = 90;
+        previewEnd.Fire();
+        Assert.True(vm.IsPreviewing);
+        Assert.Equal(new[] { (Primary, 90) }, _vibrance.SetCalls);
+
+        vm.EndAdjust();
+        previewEnd.Fire();
+        Assert.False(vm.IsPreviewing);
+        Assert.Equal(new[] { (Primary, 90), (Primary, 50) }, _vibrance.SetCalls);
+    }
+
+    [Fact]
+    public void GrabbingTheThumb_KeepsAnEarlierEditsPreviewOn()
+    {
+        var (vm, previewEnd) = CreateEditingProfile();
+
+        vm.DetailVibrance = 90;
+        vm.BeginAdjust();
+        previewEnd.Fire();
+
+        Assert.True(vm.IsPreviewing);
+    }
+
+    [Fact]
+    public void AnotherEdit_RestartsTheDelay_SoOnlyTheLatestEndsThePreview()
+    {
+        var (vm, previewEnd) = CreateEditingProfile();
+
+        vm.DetailVibrance = 90;
+        vm.DetailVibrance = 91;
+        Assert.True(vm.IsPreviewing);
+
+        previewEnd.Fire();
+        Assert.False(vm.IsPreviewing);
+        Assert.Equal(new[] { (Primary, 90), (Primary, 91), (Primary, 50) }, _vibrance.SetCalls);
+    }
+
+    [Fact]
+    public void IsPreviewing_FollowsThePreview_AndNotifies()
+    {
+        var (vm, previewEnd) = CreateEditingProfile();
+        var raised = 0;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.IsPreviewing)) raised++;
+        };
+
+        Assert.False(vm.IsPreviewing);
+
+        vm.DetailVibrance = 90;
+        Assert.True(vm.IsPreviewing);
+        Assert.Equal(1, raised);
+
+        previewEnd.Fire();
+        Assert.False(vm.IsPreviewing);
+        Assert.Equal(2, raised);
+    }
+
     private sealed class FakeVibranceService : IVibranceService
     {
         public List<(DisplayId Display, int Value)> SetCalls { get; } = new();
@@ -258,5 +348,22 @@ public class MainViewModelTests : IDisposable
         public void Schedule(Action action) => action();
 
         public void Cancel() { }
+    }
+
+    /// <summary>Holds the latest scheduled action until <see cref="Fire"/>, as the delay elapsing would.</summary>
+    private sealed class ManualScheduler : IDelayScheduler
+    {
+        private Action? _pending;
+
+        public void Schedule(Action action) => _pending = action;
+
+        public void Cancel() => _pending = null;
+
+        public void Fire()
+        {
+            var action = _pending;
+            _pending = null;
+            action?.Invoke();
+        }
     }
 }

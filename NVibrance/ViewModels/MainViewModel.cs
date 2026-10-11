@@ -13,10 +13,16 @@ namespace NVibrance.ViewModels;
 /// </summary>
 public sealed class MainViewModel : INotifyPropertyChanged
 {
+    private static readonly TimeSpan PreviewHold = TimeSpan.FromSeconds(2);
+
     private readonly ProgramRegistry _registry;
     private readonly IVibranceService _vibrance;
     private readonly VibranceController? _controller;
     private readonly UpdateService? _updates;
+    private readonly IDelayScheduler _previewEnd;
+
+    /// <summary>The slider thumb is held; the preview stays on until it is released.</summary>
+    private bool _adjusting;
 
     /// <summary>Suppresses driver writes while reflecting an already-current value into the slider.</summary>
     private bool _refreshingDisplayValue;
@@ -33,16 +39,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<object> Entries { get; } = new();
 
     public MainViewModel(ProgramRegistry registry, IVibranceService vibrance, VibranceController? controller = null,
-        UpdateService? updates = null)
+        UpdateService? updates = null, IDelayScheduler? previewEnd = null)
     {
         _registry = registry;
         _vibrance = vibrance;
         _controller = controller;
         _updates = updates;
+        _previewEnd = previewEnd ?? new DispatcherDelayScheduler(PreviewHold);
 
         Entries.CollectionChanged += OnEntriesChanged;
         if (_controller is not null)
-            _controller.StatusChanged += (_, _) => OnPropertyChanged(nameof(IsSwitchingPaused));
+            _controller.StatusChanged += (_, _) =>
+            {
+                OnPropertyChanged(nameof(IsSwitchingPaused));
+                OnPropertyChanged(nameof(IsPreviewing));
+            };
         if (_updates is not null)
             _updates.UpdateReady += (_, _) =>
             {
@@ -118,11 +129,32 @@ public sealed class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(IsDesktopSelected));
             OnPropertyChanged(nameof(IsProfileSelected));
             SyncSlider(() => OnPropertyChanged(nameof(DetailVibrance)));
-            _controller?.EndPreview();
+            EndPreview();
         }
     }
 
-    public void EndPreview() => _controller?.EndPreview();
+    /// <summary>An edited profile value is showing on screen.</summary>
+    public bool IsPreviewing => _controller?.IsPreviewing ?? false;
+
+    public void EndPreview()
+    {
+        _previewEnd.Cancel();
+        _controller?.EndPreview();
+    }
+
+    /// <summary>The slider thumb was grabbed: keep the preview on however long it is held.</summary>
+    public void BeginAdjust()
+    {
+        _adjusting = true;
+        _previewEnd.Cancel();
+    }
+
+    /// <summary>The slider thumb was released: the preview ends shortly after.</summary>
+    public void EndAdjust()
+    {
+        _adjusting = false;
+        _previewEnd.Schedule(EndPreview);
+    }
 
     public ProgramProfile? SelectedProfile => SelectedEntry as ProgramProfile;
 
@@ -227,6 +259,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 profile.Vibrance = value;
                 ProfileEdited?.Invoke(this, EventArgs.Empty);
                 _controller?.Preview(value);
+                if (!_adjusting)
+                    _previewEnd.Schedule(EndPreview);
             }
             else
             {

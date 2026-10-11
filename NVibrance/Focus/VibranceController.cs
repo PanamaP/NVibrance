@@ -31,6 +31,9 @@ public sealed class VibranceController : IDisposable
     private (DisplayId Display, int Value)? _preview;
     private bool _isPaused;
 
+    /// <summary>A profile value being edited is showing on screen; see <see cref="Preview"/>.</summary>
+    public bool IsPreviewing => _preview is not null;
+
     /// <summary>The profile currently applied, or null when the desktop value is in effect.</summary>
     public ProgramProfile? ActiveProfile { get; private set; }
 

@@ -1061,14 +1061,35 @@
                                                        Text="Saved" />
                                         </StackPanel>
                                     </StackPanel>
-                                    <TextBlock Style="{StaticResource CaptionText}"
-                                               Margin="0,2,0,0"
-                                               TextTrimming="CharacterEllipsis"
-                                               Visibility="{Binding IsProfileSelected, Converter={StaticResource BoolToVisibility}}">
-                                        <Run Text="Applied while" />
-                                        <Run Text="{Binding SelectedProfile.Name, Mode=OneWay}" />
-                                        <Run Text="is in focus." />
-                                    </TextBlock>
+                                    <Grid Margin="0,2,0,0"
+                                          Visibility="{Binding IsProfileSelected, Converter={StaticResource BoolToVisibility}}">
+                                        <TextBlock TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource CaptionText}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsPreviewing}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                            <Run Text="Applied while" />
+                                            <Run Text="{Binding SelectedProfile.Name, Mode=OneWay}" />
+                                            <Run Text="is in focus." />
+                                        </TextBlock>
+                                        <TextBlock TextTrimming="CharacterEllipsis" Text="Previewing on this screen.">
+                                            <TextBlock.Style>
+                                                <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource CaptionText}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsPreviewing}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
                                     <TextBlock Style="{StaticResource CaptionText}"
                                                Margin="0,2,0,0"
                                                TextTrimming="CharacterEllipsis"
@@ -1092,7 +1113,8 @@
                                     </TextBlock>
                                 </StackPanel>
 
-                                <Slider Grid.Column="1"
+                                <Slider x:Name="VibranceSlider"
+                                        Grid.Column="1"
                                         Width="240"
                                         IsEnabled="{Binding HasDisplay}"
                                         Minimum="{Binding SliderMin}"

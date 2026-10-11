@@ -67,6 +67,7 @@ Closing the window keeps NVibrance running in the tray; the first time, Windows 
    - `dotnet restore NVibrance.slnx`
    - `dotnet build NVibrance.slnx -c Release --no-restore`
 3. Run from IDE (Rider) or run `dotnet run --project NVibrance/NVibrance.csproj` for debugging.
+4. To build and check the installer the way CI does: `./.github/scripts/package.ps1 -Version 0.0.1-dev`, then `./.github/scripts/smoke-test-installer.ps1 -Version 0.0.1-dev`. The smoke test really installs and uninstalls NVibrance, and removes its autostart entry.
 
 ## Where NVibrance stores things
 

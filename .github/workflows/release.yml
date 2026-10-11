@@ -8,12 +8,6 @@ on:
 permissions:
   contents: write
 
-env:
-  # Velopack package id. Permanent: changing it breaks updates for installed copies.
-  # Deliberately not "NVibrance", which would install into %LOCALAPPDATA%\NVibrance,
-  # the folder that already holds NVibrance's logs.
-  PACK_ID: PanamaP.NVibrance
-
 # Actions are pinned to full commit SHAs, not tags: a tag can be moved to different code, and
 # this workflow publishes what every installed copy of NVibrance downloads as an update.
 jobs:
@@ -44,44 +38,19 @@ jobs:
       - name: Test
         run: dotnet test NVibrance.slnx -c Release --no-build
 
-      - name: Publish
-        run: dotnet publish NVibrance/NVibrance.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:DebugType=None /p:DebugSymbols=false /p:Version=${{ env.VERSION }} -o publish
+      # Same script as CI, plus the previous release's package so this one ships a delta update
+      - name: Package installer
+        run: ./.github/scripts/package.ps1 -Version $env:VERSION -PreviousReleaseRepo "https://github.com/${{ github.repository }}" -Token "${{ secrets.GITHUB_TOKEN }}"
 
-      # -------- Installer and update packages (Velopack) --------
-      # vpk must be the same version as the Velopack package the app references, so take it
-      # from the project file: one place to change, which Dependabot keeps up to date.
-      - name: Install vpk
-        run: |
-          [xml]$proj = Get-Content NVibrance/NVibrance.csproj
-          $version = $proj.Project.ItemGroup.PackageReference |
-            Where-Object Include -eq 'Velopack' | Select-Object -ExpandProperty Version
-          if (-not $version) { throw "No Velopack PackageReference found in NVibrance.csproj" }
-          dotnet tool install -g vpk --version $version
-
-      # The previous release's package lets this one ship as a small delta update.
-      # The first Velopack release has none to download, so a failure here is fine.
-      - name: Download previous release
-        continue-on-error: true
-        run: vpk download github --repoUrl https://github.com/${{ github.repository }} --token ${{ secrets.GITHUB_TOKEN }} -o releases
-
-      - name: Pack
-        run: >
-          vpk pack --packId ${{ env.PACK_ID }} --packVersion ${{ env.VERSION }} --packDir publish
-          --mainExe NVibrance.exe --packTitle NVibrance --packAuthors PanamaP
-          --icon NVibrance/UI/Assets/logo.ico --shortcuts StartMenuRoot -o releases
-
-      # Velopack names downloads after the package id; give people friendlier names.
-      # Updates never look at these two files, only at the .nupkg and releases.win.json.
-      - name: Name downloads
-        run: |
-          Copy-Item releases/${{ env.PACK_ID }}-win-Setup.exe NVibrance-Setup.exe
-          Copy-Item releases/${{ env.PACK_ID }}-win-Portable.zip NVibrance-Portable.zip
+      # never publish an installer that doesn't install, start and uninstall cleanly
+      - name: Smoke-test installer
+        run: ./.github/scripts/smoke-test-installer.ps1 -Version $env:VERSION
 
       # -------- Release --------
       # GitHub's own CLI (preinstalled on the runner) rather than a third-party action:
       # this step publishes what installed copies update to.
-      # Only this version's packages are attached; the previous one downloaded above for
-      # the delta already lives on its own release.
+      # Only this version's packages are attached; the previous one downloaded for the
+      # delta already lives on its own release.
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -92,7 +61,5 @@ jobs:
             'releases/releases.win.json'
             'releases/assets.win.json'
             'releases/RELEASES'
-            "releases/$env:PACK_ID-$env:VERSION-full.nupkg"
-            "releases/$env:PACK_ID-$env:VERSION-delta.nupkg"  # absent on the first installer release
-          ) | Where-Object { Test-Path $_ }
+          ) + (Get-ChildItem "releases/*-$env:VERSION-*.nupkg").FullName  # full, plus delta when there is one
           gh release create "${{ github.ref_name }}" @files --repo "${{ github.repository }}" --title "${{ github.ref_name }}" --generate-notes

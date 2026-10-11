@@ -34,3 +34,20 @@ jobs:
         with:
           name: test-results
           path: TestResults
+
+      # Build and try the installer exactly as a release would, so packaging problems
+      # (a Velopack bump from Dependabot, a renamed exe, a crashing install hook) show up
+      # on the pull request instead of when a release tag is pushed.
+      - name: Package installer
+        run: ./.github/scripts/package.ps1 -Version "0.0.1-ci.${{ github.run_number }}"
+
+      - name: Smoke-test installer
+        run: ./.github/scripts/smoke-test-installer.ps1 -Version "0.0.1-ci.${{ github.run_number }}"
+
+      # the installer from this run, to try a pull request's build by hand
+      - name: Upload installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: NVibrance-Setup-ci.${{ github.run_number }}
+          path: NVibrance-Setup.exe
+          retention-days: 7

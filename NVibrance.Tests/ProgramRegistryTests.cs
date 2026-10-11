@@ -1,4 +1,5 @@
 using System.IO;
+using System.Windows.Threading;
 using Xunit;
 
 namespace NVibrance.Tests;
@@ -66,6 +67,28 @@ public class ProgramRegistryTests : IDisposable
 
         Assert.NotNull(found);
         Assert.Equal("Apex", found.Name);
+    }
+
+    [Fact]
+    public void EditingAProfile_SavesItAfterTheDebounceOnTheSameThread()
+    {
+        using var registry = new ProgramRegistry(_profilesPath);
+        var profile = new ProgramProfile("Apex", @"C:\Games\r5apex.exe", 80);
+        registry.Add(profile);
+        var savedOnThread = -1;
+        registry.Saved += (_, _) => savedOnThread = Environment.CurrentManagedThreadId;
+
+        profile.Vibrance = 90;
+        var frame = new DispatcherFrame();
+        registry.Saved += (_, _) => frame.Continue = false;
+        var timeout = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        timeout.Tick += (_, _) => frame.Continue = false;
+        timeout.Start();
+        Dispatcher.PushFrame(frame);
+        timeout.Stop();
+
+        Assert.Equal(Environment.CurrentManagedThreadId, savedOnThread);
+        Assert.Contains("90", File.ReadAllText(_profilesPath));
     }
 
     [Fact]

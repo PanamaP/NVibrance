@@ -228,17 +228,13 @@ public partial class MainWindow
 
     private void Registry_Saved(object? sender, EventArgs e)
     {
-        // raised on the registry's timer thread
-        Dispatcher.BeginInvoke(() =>
-        {
-            if (!_confirmNextSave)
-                return;
+        if (!_confirmNextSave)
+            return;
 
-            _confirmNextSave = false;
-            Fade(SavedIndicator, 1, 150);
-            _savedTimer.Stop();
-            _savedTimer.Start();
-        });
+        _confirmNextSave = false;
+        Fade(SavedIndicator, 1, 150);
+        _savedTimer.Stop();
+        _savedTimer.Start();
     }
 
     // ---------------------------------------------------------------- sidebar

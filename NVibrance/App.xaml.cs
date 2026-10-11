@@ -1,4 +1,4 @@
-
+﻿
 using System.Windows;
 using NVibrance.Focus;
 using NVibrance.Services;
@@ -86,7 +86,8 @@ public partial class App
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
         {
             Log.Error("Unhandled exception; process is terminating.", args.ExceptionObject as Exception);
-            try { _registry.Flush(); } catch { /* dying anyway; Flush already logs */ }
+            // possibly off the UI thread, where the debounce timer can't be touched; SaveToDisk logs its own failures
+            _registry.SaveToDisk();
         };
 
         TaskScheduler.UnobservedTaskException += (_, args) =>

@@ -28,7 +28,11 @@ public sealed class VibranceController : IDisposable
     private DisplayId? _activeDisplay;
     private ProgramProfile? _lastTarget;
     private (ProgramProfile Profile, DisplayId Display)? _pendingTarget;
+    private (DisplayId Display, int Value)? _preview;
     private bool _isPaused;
+
+    /// <summary>A profile value being edited is showing on screen; see <see cref="Preview"/>.</summary>
+    public bool IsPreviewing => _preview is not null;
 
     /// <summary>The profile currently applied, or null when the desktop value is in effect.</summary>
     public ProgramProfile? ActiveProfile { get; private set; }
@@ -54,7 +58,7 @@ public sealed class VibranceController : IDisposable
             {
                 _debounce.Cancel();
                 _pendingTarget = null;
-                CommitPending(); // restores the desktop value
+                Commit();
             }
             else
             {
@@ -165,7 +169,7 @@ public sealed class VibranceController : IDisposable
         // (game → overlay → game) produces a single NVAPI write.
         _pendingTarget = target is null ? null : (target, display);
         _lastTarget = target;
-        _debounce.Schedule(CommitPending);
+        _debounce.Schedule(Commit);
     }
 
     /// <summary>
@@ -189,16 +193,33 @@ public sealed class VibranceController : IDisposable
         _lastTarget = null;
     }
 
-    private void CommitPending()
+    /// <summary>
+    /// Shows a profile value being edited, on the display of the foreground window
+    /// (NVibrance's own while the slider is dragged), until <see cref="EndPreview"/>.
+    /// Applies immediately and even while paused, so the edit is visible as it happens.
+    /// </summary>
+    public void Preview(int value)
+    {
+        var (hwnd, _) = _getForeground();
+        var display = hwnd == IntPtr.Zero ? _vibrance.PrimaryDisplay : _resolveDisplay(hwnd);
+        _preview = (display, value);
+        Commit();
+    }
+
+    /// <summary>Ends a preview, returning to the foreground window's profile or the desktop value.</summary>
+    public void EndPreview()
+    {
+        if (_preview is null) return;
+
+        _preview = null;
+        Commit();
+    }
+
+    private void Commit()
     {
         try
         {
-            if (_pendingTarget is (var profile, var display))
-                ApplyProfile(profile, display);
-            else
-                RestoreIfNeeded();
-
-            ActiveProfile = _pendingTarget?.Profile;
+            ApplyDesired();
         }
         catch (Exception ex)
         {
@@ -209,18 +230,30 @@ public sealed class VibranceController : IDisposable
         StatusChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void ApplyProfile(ProgramProfile profile, DisplayId display)
+    private void ApplyDesired()
+    {
+        if (_preview is (var previewDisplay, var previewValue))
+            Apply(previewDisplay, previewValue, "preview");
+        else if (_pendingTarget is (var profile, var display))
+            Apply(display, profile.Vibrance, $"profile '{profile.Name}'");
+        else
+            RestoreIfNeeded();
+
+        ActiveProfile = _preview is null ? _pendingTarget?.Profile : null;
+    }
+
+    private void Apply(DisplayId display, int value, string what)
     {
         if (State.Current is { } other && other.Display != display)
             RestoreIfNeeded();
 
         var current = _vibrance.GetCurrent(display);
-        if (current == profile.Vibrance)
+        if (current == value)
             return;
 
         State.Capture(display, current);
-        _vibrance.Set(display, profile.Vibrance);
-        Log.Info($"Applied profile '{profile.Name}' on {display} (vibrance {profile.Vibrance}, was {current}).");
+        _vibrance.Set(display, value);
+        Log.Info($"Applied {what} on {display} (vibrance {value}, was {current}).");
     }
 
     private void RestoreIfNeeded()

@@ -280,25 +280,8 @@ public class TrayHost : IDisposable
     /// </summary>
     private void NotifyUpdateOnce(string version)
     {
-        var marker = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "NVibrance",
-            "update-notified");
-
-        try
-        {
-            if (File.Exists(marker) && File.ReadAllText(marker).Trim() == version)
-                return;
-
-            Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
-            File.WriteAllText(marker, version);
-        }
-        catch (Exception ex)
-        {
-            // without the marker the notification would repeat every launch; skip it instead
-            Log.Warn($"Could not record the update notification: {ex.Message}");
+        if (!ShouldShowOnce("update-notified", version))
             return;
-        }
 
         _notifyIcon.ShowBalloonTip(
             8000,
@@ -403,31 +386,32 @@ public class TrayHost : IDisposable
         if (_exiting)
             return;
 
-        var marker = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "NVibrance",
-            "tray-hint-shown");
-
-        try
-        {
-            if (File.Exists(marker))
-                return;
-
-            Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
-            File.WriteAllText(marker, string.Empty);
-        }
-        catch (Exception ex)
-        {
-            // without the marker the hint would repeat on every close; skip it instead
-            Log.Warn($"Could not record the tray hint: {ex.Message}");
+        if (!ShouldShowOnce("tray-hint-shown", string.Empty))
             return;
-        }
 
         var text = _controller is { IsPaused: true }
             ? "Switching is paused. Right-click the tray icon to resume or exit."
             : "Profiles keep switching in the background. Right-click the tray icon to pause or exit.";
 
         _notifyIcon.ShowBalloonTip(5000, "NVibrance is still running", text, ToolTipIcon.None);
+    }
+
+    private static bool ShouldShowOnce(string marker, string value)
+    {
+        try
+        {
+            var path = Path.Combine(AppInfo.EnsureDataDirectory(), marker);
+            if (File.Exists(path) && File.ReadAllText(path).Trim() == value)
+                return false;
+
+            File.WriteAllText(path, value);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Could not record {marker}: {ex.Message}");
+            return false;
+        }
     }
 
     public void Dispose()

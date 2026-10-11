@@ -16,6 +16,9 @@ public interface IVibranceService
     /// <summary>Returns the display's current driver vibrance level, unmodified.</summary>
     int GetCurrent(DisplayId display);
 
+    /// <summary>Returns the display's hardware vibrance range.</summary>
+    (int Minimum, int Maximum) GetRange(DisplayId display);
+
     /// <summary>Sets the display's vibrance level, clamped to its hardware range.</summary>
     void Set(DisplayId display, int value);
 }

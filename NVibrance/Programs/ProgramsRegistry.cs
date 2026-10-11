@@ -1,22 +1,22 @@
 ﻿using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
-using System.Timers;
+using System.Windows.Threading;
 using NVibrance.Services;
-using Timer = System.Timers.Timer;
-
 
 namespace NVibrance;
 
+/// <summary>
+/// The saved profiles. Used only on the UI thread, which also runs the save debounce.
+/// </summary>
 public sealed class ProgramRegistry : IDisposable
 {
     private readonly List<ProgramProfile> _profiles = new();
     private readonly Dictionary<ProgramProfile, PropertyChangedEventHandler> _handlers = new();
-    private readonly Lock _sync = new();
-    private readonly Timer _debounceTimer;
+    private readonly DispatcherTimer _debounceTimer;
     private bool _isLoading;
 
-    private const int DebounceDelayMs = 500;
+    private static readonly TimeSpan DebounceDelay = TimeSpan.FromMilliseconds(500);
 
     public event EventHandler? Saved;
 
@@ -35,28 +35,19 @@ public sealed class ProgramRegistry : IDisposable
     public ProgramRegistry(string? profilesPath = null)
     {
         _profilesPathOverride = profilesPath;
-        _debounceTimer = new Timer(DebounceDelayMs) { AutoReset = false };
-        _debounceTimer.Elapsed += DebounceTimer_Elapsed;
+        _debounceTimer = new DispatcherTimer { Interval = DebounceDelay };
+        _debounceTimer.Tick += DebounceTimer_Tick;
     }
 
-    public IReadOnlyList<ProgramProfile> GetProfiles()
-    {
-        lock (_sync)
-        {
-            return _profiles.ToList();
-        }
-    }
+    public IReadOnlyList<ProgramProfile> GetProfiles() => _profiles.ToList();
 
     public void Add(ProgramProfile profile)
     {
-        lock (_sync)
-        {
-            if (_profiles.Any(p => p.Matches(profile.ExecutablePath)))
-                return;
+        if (_profiles.Any(p => p.Matches(profile.ExecutablePath)))
+            return;
 
-            _profiles.Add(profile);
-            AttachProfile(profile);
-        }
+        _profiles.Add(profile);
+        AttachProfile(profile);
 
         ScheduleSave();
         OnProfilesChanged();
@@ -64,14 +55,10 @@ public sealed class ProgramRegistry : IDisposable
 
     public bool RemoveByExePath(string exePath)
     {
-        ProgramProfile? p;
-        lock (_sync)
-        {
-            p = FindByExePathInternal(exePath);
-            if (p is null) return false;
-            DetachProfile(p);
-            _profiles.Remove(p);
-        }
+        var p = FindByExePath(exePath);
+        if (p is null) return false;
+        DetachProfile(p);
+        _profiles.Remove(p);
 
         ScheduleSave();
         OnProfilesChanged();
@@ -79,12 +66,7 @@ public sealed class ProgramRegistry : IDisposable
     }
 
     public ProgramProfile? FindByExePath(string exePath)
-    {
-        lock (_sync)
-        {
-            return FindByExePathInternal(exePath);
-        }
-    }
+        => _profiles.FirstOrDefault(p => p.Matches(exePath));
 
     /// <summary>
     /// Finds a profile by bare process name. Used only when the full executable path
@@ -92,11 +74,7 @@ public sealed class ProgramRegistry : IDisposable
     /// </summary>
     public ProgramProfile? FindByProcessName(string processName)
     {
-        List<ProgramProfile> matches;
-        lock (_sync)
-        {
-            matches = _profiles.Where(p => p.MatchesProcessName(processName)).ToList();
-        }
+        var matches = _profiles.Where(p => p.MatchesProcessName(processName)).ToList();
 
         if (matches.Count > 1)
             Log.Warn($"Multiple profiles match process name '{processName}'; using '{matches[0].Name}'.");
@@ -104,23 +82,10 @@ public sealed class ProgramRegistry : IDisposable
         return matches.FirstOrDefault();
     }
 
-    private ProgramProfile? FindByExePathInternal(string exePath)
-        => _profiles.FirstOrDefault(p => p.Matches(exePath));
-
     // ---- persistence ----
 
     private string GetProfilesPath()
-    {
-        if (_profilesPathOverride is not null)
-            return _profilesPathOverride;
-
-        var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "NVibrance");
-
-        Directory.CreateDirectory(dir);
-        return Path.Combine(dir, "profiles.json");
-    }
+        => _profilesPathOverride ?? Path.Combine(AppInfo.EnsureDataDirectory(), "profiles.json");
 
     public void LoadFromDisk()
     {
@@ -137,23 +102,19 @@ public sealed class ProgramRegistry : IDisposable
                 json,
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
 
-            lock (_sync)
+            foreach (var existing in _profiles.ToArray())
+                DetachProfile(existing);
+
+            _profiles.Clear();
+
+            foreach (var dto in loaded)
             {
-                // detach existing handlers before clearing
-                foreach (var existing in _profiles.ToArray())
-                    DetachProfile(existing);
+                if (string.IsNullOrWhiteSpace(dto.Name)) continue;
+                if (string.IsNullOrWhiteSpace(dto.ExecutablePath)) continue;
 
-                _profiles.Clear();
-
-                foreach (var dto in loaded)
-                {
-                    if (string.IsNullOrWhiteSpace(dto.Name)) continue;
-                    if (string.IsNullOrWhiteSpace(dto.ExecutablePath)) continue;
-
-                    var profile = new ProgramProfile(dto.Name, dto.ExecutablePath, dto.Vibrance);
-                    _profiles.Add(profile);
-                    AttachProfile(profile);
-                }
+                var profile = new ProgramProfile(dto.Name, dto.ExecutablePath, dto.Vibrance);
+                _profiles.Add(profile);
+                AttachProfile(profile);
             }
         }
         catch (JsonException ex)
@@ -187,14 +148,9 @@ public sealed class ProgramRegistry : IDisposable
 
     public void SaveToDisk()
     {
-        // Public immediate save (will write current snapshot)
-        List<ProgramProfileDto> dto;
-        lock (_sync)
-        {
-            dto = _profiles
-                .Select(p => new ProgramProfileDto(p.Name, p.ExecutablePath, p.Vibrance))
-                .ToList();
-        }
+        var dto = _profiles
+            .Select(p => new ProgramProfileDto(p.Name, p.ExecutablePath, p.Vibrance))
+            .ToList();
 
         try
         {
@@ -222,17 +178,10 @@ public sealed class ProgramRegistry : IDisposable
         _debounceTimer.Start();
     }
 
-    private void DebounceTimer_Elapsed(object? sender, ElapsedEventArgs e)
+    private void DebounceTimer_Tick(object? sender, EventArgs e)
     {
-        try
-        {
-            SaveToDisk();
-        }
-        catch (Exception ex)
-        {
-            // an escaped exception on this timer thread would kill the process
-            Log.Error("Unexpected error saving profiles from debounce timer.", ex);
-        }
+        _debounceTimer.Stop();
+        SaveToDisk();
     }
 
     public void Flush()
@@ -286,8 +235,7 @@ public sealed class ProgramRegistry : IDisposable
     public void Dispose()
     {
         _debounceTimer.Stop();
-        _debounceTimer.Elapsed -= DebounceTimer_Elapsed;
-        _debounceTimer.Dispose();
+        _debounceTimer.Tick -= DebounceTimer_Tick;
         Flush();
     }
 }

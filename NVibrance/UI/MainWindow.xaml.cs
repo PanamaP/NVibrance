@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -48,6 +49,9 @@ public partial class MainWindow
 
         Closing += OnClosingHide;
         Activated += (_, _) => RefreshOnActivate();
+        Deactivated += (_, _) => Vm.EndPreview();
+        VibranceSlider.AddHandler(Thumb.DragStartedEvent, new DragStartedEventHandler((_, _) => Vm.BeginAdjust()));
+        VibranceSlider.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((_, _) => Vm.EndAdjust()));
         StateChanged += (_, _) => UpdateMaximizedState();
 
         _savedTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
@@ -160,6 +164,7 @@ public partial class MainWindow
 
     private void HideToTray()
     {
+        Vm.EndPreview();
         Hide();
         HiddenToTray?.Invoke(this, EventArgs.Empty);
     }
@@ -228,17 +233,13 @@ public partial class MainWindow
 
     private void Registry_Saved(object? sender, EventArgs e)
     {
-        // raised on the registry's timer thread
-        Dispatcher.BeginInvoke(() =>
-        {
-            if (!_confirmNextSave)
-                return;
+        if (!_confirmNextSave)
+            return;
 
-            _confirmNextSave = false;
-            Fade(SavedIndicator, 1, 150);
-            _savedTimer.Stop();
-            _savedTimer.Start();
-        });
+        _confirmNextSave = false;
+        Fade(SavedIndicator, 1, 150);
+        _savedTimer.Stop();
+        _savedTimer.Start();
     }
 
     // ---------------------------------------------------------------- sidebar
@@ -289,6 +290,11 @@ public partial class MainWindow
         {
             UndoDelete();
             e.Handled = true;
+        }
+        else if (e.Key == Key.Escape && Vm.IsPreviewing)
+        {
+            // not handled, so the same Esc still closes the picker or cancels a rename
+            Vm.EndPreview();
         }
     }
 

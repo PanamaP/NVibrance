@@ -1,3 +1,4 @@
+using System.IO;
 using System.Reflection;
 
 namespace NVibrance;
@@ -9,6 +10,9 @@ public static class AppInfo
     /// (see release.yml); the informational version's "+commit" suffix is dropped.
     /// </summary>
     public static string Version { get; } = ReadVersion();
+
+    public static string EnsureDataDirectory() => Directory.CreateDirectory(
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NVibrance")).FullName;
 
     private static string ReadVersion()
     {

@@ -73,17 +73,21 @@ jobs:
           Copy-Item releases/${{ env.PACK_ID }}-win-Portable.zip NVibrance-Portable.zip
 
       # -------- Release --------
+      # GitHub's own CLI (preinstalled on the runner) rather than a third-party action:
+      # this step publishes what installed copies update to.
       # Only this version's packages are attached; the previous one downloaded above for
       # the delta already lives on its own release.
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
-        with:
-          files: |
-            NVibrance-Setup.exe
-            NVibrance-Portable.zip
-            releases/releases.win.json
-            releases/assets.win.json
-            releases/RELEASES
-            releases/${{ env.PACK_ID }}-${{ env.VERSION }}-full.nupkg
-            releases/${{ env.PACK_ID }}-${{ env.VERSION }}-delta.nupkg
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $files = @(
+            'NVibrance-Setup.exe'
+            'NVibrance-Portable.zip'
+            'releases/releases.win.json'
+            'releases/assets.win.json'
+            'releases/RELEASES'
+            "releases/$env:PACK_ID-$env:VERSION-full.nupkg"
+            "releases/$env:PACK_ID-$env:VERSION-delta.nupkg"  # absent on the first installer release
+          ) | Where-Object { Test-Path $_ }
+          gh release create "${{ github.ref_name }}" @files --repo "${{ github.repository }}" --title "${{ github.ref_name }}" --generate-notes

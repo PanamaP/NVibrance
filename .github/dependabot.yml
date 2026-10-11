@@ -1,0 +1,29 @@
+# Opens pull requests when the workflows' actions or the NuGet packages have new releases.
+# Actions are pinned to commit SHAs; Dependabot updates the SHA and its "# vX.Y.Z" comment.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    # a release this new hasn't had time to be caught if it's malicious
+    cooldown:
+      default-days: 14
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 14
+    ignore:
+      # Velopack must match the vpk tool version in release.yml (VPK_VERSION),
+      # which Dependabot can't update; upgrade both together by hand.
+      - dependency-name: Velopack
+    groups:
+      packages:
+        patterns: ["*"]
+        update-types: [minor, patch]

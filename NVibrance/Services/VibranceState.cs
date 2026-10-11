@@ -1,36 +1,35 @@
-﻿namespace NVibrance.Services;
+using NVibrance.Nvidia;
+
+namespace NVibrance.Services;
+
+/// <summary>A profile applied on <see cref="Display"/>, which restore returns to <see cref="DesktopValue"/>.</summary>
+public sealed record ActiveOverride(DisplayId Display, int DesktopValue);
 
 /// <summary>
-/// Manages the state of vibrance overrides.
+/// Manages the state of vibrance overrides. Only the foreground window carries a profile,
+/// so at most one display is overridden at a time.
 /// </summary>
 public sealed class VibranceState
 {
-    /// <summary>
-    /// Indicates whether the vibrance has been overridden.
-    /// </summary>
-    private bool IsOverridden { get; set; }
-    
-    /// <summary>
-    /// The previously captured vibrance value.
-    /// </summary>
-    private int? PreviousValue { get; set; }
+    /// <summary>The active override; null when every display holds its desktop value.</summary>
+    public ActiveOverride? Current { get; private set; }
 
     /// <summary>
-    /// The desktop value that restore will return to while an override is active;
-    /// null when no override is active (the driver then holds the desktop value).
+    /// Capture the display's desktop value, unless it is already overridden. An override on
+    /// another display must be restored first, or its desktop value would be lost.
     /// </summary>
-    public int? CapturedValue => IsOverridden ? PreviousValue : null;
-
-    /// <summary>
-    /// Capture the current vibrance value if not already captured.
-    /// </summary>
-    public void Capture(int current)
+    public void Capture(DisplayId display, int current)
     {
-        if (IsOverridden)
-            return;
+        if (Current is not null)
+        {
+            if (Current.Display == display)
+                return;
 
-        PreviousValue = current;
-        IsOverridden = true;
+            throw new InvalidOperationException(
+                $"Cannot capture {display} while {Current.Display} is still overridden.");
+        }
+
+        Current = new ActiveOverride(display, current);
     }
 
     /// <summary>
@@ -40,21 +39,24 @@ public sealed class VibranceState
     /// </summary>
     public void Recapture(int current)
     {
-        if (!IsOverridden)
-            return;
-
-        PreviousValue = current;
+        if (Current is not null)
+            Current = Current with { DesktopValue = current };
     }
 
     /// <summary>
-    /// Restore the previously captured vibrance value if overridden.
+    /// End the override, returning the display and value to restore, or null if none was active.
     /// </summary>
-    public int? Restore()
+    public ActiveOverride? Restore()
     {
-        if (!IsOverridden)
-            return null;
-
-        IsOverridden = false;
-        return PreviousValue;
+        var restore = Current;
+        Current = null;
+        return restore;
     }
+
+    /// <summary>
+    /// The desktop value restore will return the display to; null when it is not overridden
+    /// (the driver then holds the desktop value).
+    /// </summary>
+    public int? CapturedValueFor(DisplayId display)
+        => Current?.Display == display ? Current.DesktopValue : null;
 }

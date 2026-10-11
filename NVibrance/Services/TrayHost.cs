@@ -245,7 +245,7 @@ public class TrayHost : IDisposable
     {
         try
         {
-            return _vibrance.GetCurrent().ToString();
+            return _vibrance.GetCurrent(_vibrance.PrimaryDisplay).ToString();
         }
         catch (Exception ex)
         {

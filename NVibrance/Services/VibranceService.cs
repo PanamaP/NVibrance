@@ -1,4 +1,6 @@
 using NvAPIWrapper.Display;
+using NVibrance.Focus;
+using NVibrance.Nvidia;
 
 namespace NVibrance.Services;
 
@@ -10,60 +12,26 @@ public sealed class VibranceService : IVibranceService
     /// </summary>
     public const int MinVibrance = 50;
 
-    private Display? _cachedDisplay;
+    public DisplayId PrimaryDisplay => MonitorLocator.Primary();
 
-    public int GetCurrent()
-    {
-        try
-        {
-            var display = GetCachedPrimaryDisplay();
-            return display.DigitalVibranceControl.CurrentLevel;
-        }
-        catch (InvalidOperationException)
-        {
-            // try refresh once and rethrow if still failing
-            _cachedDisplay = FindPrimaryDisplay();
-            return _cachedDisplay.DigitalVibranceControl.CurrentLevel;
-        }
-    }
+    public IReadOnlyList<DisplayId> GetDisplays()
+        => Display.GetDisplays().Select(d => new DisplayId(d.Name)).ToList();
 
-    public void Set(int value)
+    public int GetCurrent(DisplayId display)
+        => Find(display).DigitalVibranceControl.CurrentLevel;
+
+    public void Set(DisplayId display, int value)
     {
-        try
-        {
-            var dvc = GetCachedPrimaryDisplay().DigitalVibranceControl;
-            dvc.CurrentLevel = ClampToHardware(value, dvc.MinimumLevel, dvc.MaximumLevel);
-        }
-        catch (InvalidOperationException)
-        {
-            // refresh and retry once
-            _cachedDisplay = FindPrimaryDisplay();
-            var dvc = _cachedDisplay.DigitalVibranceControl;
-            dvc.CurrentLevel = ClampToHardware(value, dvc.MinimumLevel, dvc.MaximumLevel);
-        }
+        var dvc = Find(display).DigitalVibranceControl;
+        dvc.CurrentLevel = ClampToHardware(value, dvc.MinimumLevel, dvc.MaximumLevel);
     }
 
     public static int ClampToHardware(int value, int hwMin, int hwMax)
         => Math.Clamp(value, hwMin, hwMax);
 
-    private Display GetCachedPrimaryDisplay()
-    {
-        if (_cachedDisplay != null)
-            return _cachedDisplay;
-
-        _cachedDisplay = FindPrimaryDisplay();
-        return _cachedDisplay;
-    }
-
-    private static Display FindPrimaryDisplay()
-    {
-        foreach (var display in Display.GetDisplays())
-        {
-            if (display.DisplayDevice.IsActive &&
-                display.DisplayDevice.IsConnected)
-                return display;
-        }
-
-        throw new InvalidOperationException("No active NVIDIA display found.");
-    }
+    // Looked up on every call: a cached handle goes stale when a monitor is hot-plugged.
+    // NVAPI enumerates only active displays; the DisplayDevice.IsActive check costs ~60 ms.
+    private static Display Find(DisplayId display)
+        => Display.GetDisplays().FirstOrDefault(d => new DisplayId(d.Name) == display)
+           ?? throw new InvalidOperationException($"{display} is not an active NVIDIA display.");
 }

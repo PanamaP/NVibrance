@@ -1,5 +1,6 @@
 using System.IO;
 using NVibrance.Focus;
+using NVibrance.Nvidia;
 using NVibrance.Services;
 using Xunit;
 
@@ -12,12 +13,15 @@ public class VibranceControllerTests : IDisposable
     private static readonly IntPtr OtherHwnd = new(0x2222);
     private const uint GamePid = 100;
     private const uint OtherPid = 200;
+    private static readonly DisplayId Primary = new(@"\\.\DISPLAY1");
+    private static readonly DisplayId Secondary = new(@"\\.\DISPLAY2");
 
     private readonly string _tempDir;
     private readonly ProgramRegistry _registry;
     private readonly FakeVibranceService _vibrance = new();
     private readonly Dictionary<uint, string?> _paths = new();
     private readonly Dictionary<uint, string?> _names = new();
+    private readonly Dictionary<IntPtr, DisplayId> _monitors = new();
     private (IntPtr Hwnd, uint Pid) _foreground = (IntPtr.Zero, 0);
 
     public VibranceControllerTests()
@@ -41,7 +45,8 @@ public class VibranceControllerTests : IDisposable
             debounce: new ImmediateScheduler(),
             resolveExePath: pid => _paths.GetValueOrDefault(pid),
             resolveProcessName: pid => _names.GetValueOrDefault(pid),
-            getForeground: () => _foreground);
+            getForeground: () => _foreground,
+            resolveDisplay: hwnd => _monitors.GetValueOrDefault(hwnd, Primary));
 
     private void AddApexProfile(int vibrance = 80)
         => _registry.Add(new ProgramProfile("Apex", ApexPath, vibrance));
@@ -55,8 +60,8 @@ public class VibranceControllerTests : IDisposable
 
         controller.Evaluate(GameHwnd, GamePid);
 
-        Assert.Equal(new[] { 80 }, _vibrance.SetCalls);
-        Assert.Equal(80, _vibrance.Current);
+        Assert.Equal(new[] { (Primary, 80) }, _vibrance.SetCalls);
+        Assert.Equal(80, _vibrance.Values[Primary]);
     }
 
     [Fact]
@@ -89,7 +94,7 @@ public class VibranceControllerTests : IDisposable
         controller.IsPaused = true;
         controller.Evaluate(GameHwnd, GamePid);
 
-        Assert.Equal(new[] { 80, 50 }, _vibrance.SetCalls);
+        Assert.Equal(new[] { (Primary, 80), (Primary, 50) }, _vibrance.SetCalls);
         Assert.Null(controller.ActiveProfile);
     }
 
@@ -105,7 +110,7 @@ public class VibranceControllerTests : IDisposable
 
         controller.IsPaused = false;
 
-        Assert.Equal(new[] { 80, 50, 80 }, _vibrance.SetCalls);
+        Assert.Equal(new[] { (Primary, 80), (Primary, 50), (Primary, 80) }, _vibrance.SetCalls);
         Assert.Equal("Apex", controller.ActiveProfile?.Name);
     }
 
@@ -128,7 +133,7 @@ public class VibranceControllerTests : IDisposable
     {
         AddApexProfile();
         _paths[GamePid] = ApexPath;
-        _vibrance.Current = 80;
+        _vibrance.Values[Primary] = 80;
         using var controller = CreateController();
 
         controller.Evaluate(GameHwnd, GamePid);
@@ -143,13 +148,13 @@ public class VibranceControllerTests : IDisposable
         AddApexProfile();
         _paths[GamePid] = ApexPath;
         _paths[OtherPid] = @"C:\Tools\other.exe";
-        _vibrance.Current = 55;
+        _vibrance.Values[Primary] = 55;
         using var controller = CreateController();
 
         controller.Evaluate(GameHwnd, GamePid);
         controller.Evaluate(OtherHwnd, OtherPid);
 
-        Assert.Equal(new[] { 80, 55 }, _vibrance.SetCalls);
+        Assert.Equal(new[] { (Primary, 80), (Primary, 55) }, _vibrance.SetCalls);
     }
 
     [Fact]
@@ -178,7 +183,7 @@ public class VibranceControllerTests : IDisposable
         _paths[GamePid] = ApexPath; // resolution now succeeds for the same hwnd/pid
         controller.Evaluate(GameHwnd, GamePid);
 
-        Assert.Equal(new[] { 80 }, _vibrance.SetCalls);
+        Assert.Equal(new[] { (Primary, 80) }, _vibrance.SetCalls);
     }
 
     [Fact]
@@ -206,7 +211,7 @@ public class VibranceControllerTests : IDisposable
 
         controller.Evaluate(GameHwnd, GamePid);
 
-        Assert.Equal(new[] { 80 }, _vibrance.SetCalls);
+        Assert.Equal(new[] { (Primary, 80) }, _vibrance.SetCalls);
     }
 
     [Fact]
@@ -230,14 +235,14 @@ public class VibranceControllerTests : IDisposable
     {
         AddApexProfile();
         _paths[GamePid] = ApexPath;
-        _vibrance.Current = 55;
+        _vibrance.Values[Primary] = 55;
         _foreground = (GameHwnd, GamePid);
         using var controller = CreateController();
 
         controller.Evaluate(GameHwnd, GamePid);
         _registry.RemoveByExePath(ApexPath); // triggers re-evaluation of the foreground
 
-        Assert.Equal(new[] { 80, 55 }, _vibrance.SetCalls);
+        Assert.Equal(new[] { (Primary, 80), (Primary, 55) }, _vibrance.SetCalls);
     }
 
     [Fact]
@@ -252,7 +257,7 @@ public class VibranceControllerTests : IDisposable
 
         AddApexProfile(); // triggers re-evaluation of the foreground
 
-        Assert.Equal(new[] { 80 }, _vibrance.SetCalls);
+        Assert.Equal(new[] { (Primary, 80) }, _vibrance.SetCalls);
     }
 
     [Fact]
@@ -261,17 +266,17 @@ public class VibranceControllerTests : IDisposable
         var profile = new ProgramProfile("Apex", ApexPath, 80);
         _registry.Add(profile);
         _paths[GamePid] = ApexPath;
-        _vibrance.Current = 55;
+        _vibrance.Values[Primary] = 55;
         _foreground = (GameHwnd, GamePid);
         using var controller = CreateController();
 
         controller.Evaluate(GameHwnd, GamePid);
         profile.Vibrance = 90; // triggers re-evaluation
 
-        Assert.Equal(new[] { 80, 90 }, _vibrance.SetCalls);
+        Assert.Equal(new[] { (Primary, 80), (Primary, 90) }, _vibrance.SetCalls);
         // original desktop value survives the profile edit
         controller.Evaluate(OtherHwnd, OtherPid);
-        Assert.Equal(55, _vibrance.SetCalls[^1]);
+        Assert.Equal((Primary, 55), _vibrance.SetCalls[^1]);
     }
 
     [Fact]
@@ -280,14 +285,14 @@ public class VibranceControllerTests : IDisposable
         AddApexProfile();
         _paths[GamePid] = ApexPath;
         _paths[OtherPid] = @"C:\Tools\other.exe";
-        _vibrance.Current = 55;
+        _vibrance.Values[Primary] = 55;
         using var controller = CreateController();
 
         controller.Evaluate(GameHwnd, GamePid);
         controller.NotifyManualDesktopChange(60);
         controller.Evaluate(OtherHwnd, OtherPid);
 
-        Assert.Equal(60, _vibrance.SetCalls[^1]);
+        Assert.Equal((Primary, 60), _vibrance.SetCalls[^1]);
     }
 
     [Fact]
@@ -295,13 +300,13 @@ public class VibranceControllerTests : IDisposable
     {
         AddApexProfile();
         _paths[GamePid] = ApexPath;
-        _vibrance.Current = 55;
+        _vibrance.Values[Primary] = 55;
         var controller = CreateController();
 
         controller.Evaluate(GameHwnd, GamePid);
         controller.Dispose();
 
-        Assert.Equal(new[] { 80, 55 }, _vibrance.SetCalls);
+        Assert.Equal(new[] { (Primary, 80), (Primary, 55) }, _vibrance.SetCalls);
     }
 
     [Fact]
@@ -310,32 +315,105 @@ public class VibranceControllerTests : IDisposable
         // Secure desktop / UAC prompt: must not restore while the game is still running.
         AddApexProfile();
         _paths[GamePid] = ApexPath;
-        _vibrance.Current = 55;
+        _vibrance.Values[Primary] = 55;
         _foreground = (IntPtr.Zero, 0);
         using var controller = CreateController();
 
         controller.Evaluate(GameHwnd, GamePid);
         controller.EvaluateCurrentForeground();
 
-        Assert.Equal(new[] { 80 }, _vibrance.SetCalls);
+        Assert.Equal(new[] { (Primary, 80) }, _vibrance.SetCalls);
+    }
+
+    [Fact]
+    public void GameOnSecondaryDisplay_ChangesOnlyTheSecondary()
+    {
+        AddApexProfile();
+        _paths[GamePid] = ApexPath;
+        _monitors[GameHwnd] = Secondary;
+        using var controller = CreateController();
+
+        controller.Evaluate(GameHwnd, GamePid);
+
+        Assert.Equal(new[] { (Secondary, 80) }, _vibrance.SetCalls);
+        Assert.Equal(50, _vibrance.Values[Primary]);
+    }
+
+    [Fact]
+    public void LeavingGame_RestoresTheDisplayItWasAppliedOn()
+    {
+        AddApexProfile();
+        _paths[GamePid] = ApexPath;
+        _paths[OtherPid] = @"C:\Tools\other.exe";
+        _monitors[GameHwnd] = Secondary;
+        _vibrance.Values[Secondary] = 55;
+        using var controller = CreateController();
+
+        controller.Evaluate(GameHwnd, GamePid);
+        controller.Evaluate(OtherHwnd, OtherPid);
+
+        Assert.Equal(new[] { (Secondary, 80), (Secondary, 55) }, _vibrance.SetCalls);
+    }
+
+    [Fact]
+    public void GameWindowMovedToAnotherDisplay_RestoresTheOldAndAppliesOnTheNew()
+    {
+        AddApexProfile();
+        _paths[GamePid] = ApexPath;
+        _vibrance.Values[Primary] = 55;
+        _vibrance.Values[Secondary] = 60;
+        using var controller = CreateController();
+        controller.Evaluate(GameHwnd, GamePid);
+
+        _monitors[GameHwnd] = Secondary;
+        controller.Evaluate(GameHwnd, GamePid);
+
+        Assert.Equal(new[] { (Primary, 80), (Primary, 55), (Secondary, 80) }, _vibrance.SetCalls);
+        Assert.Equal(new ActiveOverride(Secondary, 60), controller.State.Current);
+    }
+
+    [Fact]
+    public void SwitchingToAGameOnAnotherDisplay_RestoresEachDisplayToItsOwnValue()
+    {
+        const string otherGamePath = @"C:\Games\Other\other.exe";
+        AddApexProfile();
+        _registry.Add(new ProgramProfile("Other", otherGamePath, 90));
+        _paths[GamePid] = ApexPath;
+        _paths[OtherPid] = otherGamePath;
+        _monitors[OtherHwnd] = Secondary;
+        _vibrance.Values[Primary] = 55;
+        _vibrance.Values[Secondary] = 60;
+        var controller = CreateController();
+
+        controller.Evaluate(GameHwnd, GamePid);
+        controller.Evaluate(OtherHwnd, OtherPid);
+        controller.Dispose();
+
+        Assert.Equal(
+            new[] { (Primary, 80), (Primary, 55), (Secondary, 90), (Secondary, 60) },
+            _vibrance.SetCalls);
     }
 
     private sealed class FakeVibranceService : IVibranceService
     {
-        public int Current { get; set; } = 50;
-        public List<int> SetCalls { get; } = new();
+        public Dictionary<DisplayId, int> Values { get; } = new() { [Primary] = 50, [Secondary] = 50 };
+        public List<(DisplayId Display, int Value)> SetCalls { get; } = new();
         public int GetCurrentCalls { get; private set; }
 
-        public int GetCurrent()
+        public DisplayId PrimaryDisplay => Primary;
+
+        public IReadOnlyList<DisplayId> GetDisplays() => Values.Keys.ToList();
+
+        public int GetCurrent(DisplayId display)
         {
             GetCurrentCalls++;
-            return Current;
+            return Values[display];
         }
 
-        public void Set(int value)
+        public void Set(DisplayId display, int value)
         {
-            SetCalls.Add(value);
-            Current = value;
+            SetCalls.Add((display, value));
+            Values[display] = value;
         }
     }
 

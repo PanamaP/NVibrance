@@ -1,13 +1,21 @@
+using NVibrance.Nvidia;
+
 namespace NVibrance.Services;
 
 /// <summary>
-/// Reads and writes the digital vibrance level of the primary display.
+/// Reads and writes the digital vibrance level of each NVIDIA display.
 /// </summary>
 public interface IVibranceService
 {
-    /// <summary>Returns the current driver vibrance level, unmodified.</summary>
-    int GetCurrent();
+    /// <summary>The Windows primary monitor.</summary>
+    DisplayId PrimaryDisplay { get; }
 
-    /// <summary>Sets the vibrance level, clamped to the hardware range.</summary>
-    void Set(int value);
+    /// <summary>Returns the active, connected NVIDIA displays.</summary>
+    IReadOnlyList<DisplayId> GetDisplays();
+
+    /// <summary>Returns the display's current driver vibrance level, unmodified.</summary>
+    int GetCurrent(DisplayId display);
+
+    /// <summary>Sets the display's vibrance level, clamped to its hardware range.</summary>
+    void Set(DisplayId display, int value);
 }

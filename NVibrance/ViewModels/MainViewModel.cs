@@ -86,7 +86,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            ShowDesktopValue(_vibrance.GetCurrent());
+            ShowDesktopValue(_vibrance.GetCurrent(_vibrance.PrimaryDisplay));
         }
         catch (Exception ex)
         {
@@ -100,8 +100,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// </summary>
     private void ShowDesktopValue(int driverValue)
     {
-        // while a profile is applied the driver holds the profile's value, not the desktop's
-        var desktop = _controller?.State.CapturedValue ?? driverValue;
+        // while a profile is applied on the primary, the driver holds the profile's value, not the desktop's
+        var desktop = _controller?.State.CapturedValueFor(_vibrance.PrimaryDisplay) ?? driverValue;
 
         _refreshingDisplayValue = true;
         try
@@ -191,7 +191,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// <summary>False when NVAPI found no active NVIDIA display, so there is nothing to adjust.</summary>
     public bool HasDisplay => SliderMax > SliderMin;
 
-    /// <summary>The desktop vibrance; setting it writes to the driver immediately.</summary>
+    /// <summary>The desktop vibrance; setting it writes every display immediately.</summary>
     public int Vibrance
     {
         get;
@@ -205,15 +205,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             if (_refreshingDisplayValue) return;
 
+            IReadOnlyList<DisplayId> displays;
             try
             {
-                _vibrance.Set(value);
-                _controller?.NotifyManualDesktopChange(value);
+                displays = _vibrance.GetDisplays();
             }
             catch (Exception ex)
             {
                 Log.Error($"Failed to set vibrance to {value}.", ex);
+                return;
             }
+
+            foreach (var display in displays)
+            {
+                try
+                {
+                    _vibrance.Set(display, value);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"Failed to set vibrance of {display} to {value}.", ex);
+                }
+            }
+
+            _controller?.NotifyManualDesktopChange(value);
         }
     }
 
@@ -256,7 +271,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Log.Error("Failed to read displays from NVAPI.", ex);
         }
 
-        SelectedDisplay = Displays.FirstOrDefault();
+        var primary = _vibrance.PrimaryDisplay;
+        SelectedDisplay = Displays.FirstOrDefault(d => new DisplayId(d.Name) == primary) ?? Displays.FirstOrDefault();
     }
 
     /// <summary>

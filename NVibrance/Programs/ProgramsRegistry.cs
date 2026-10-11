@@ -85,17 +85,7 @@ public sealed class ProgramRegistry : IDisposable
     // ---- persistence ----
 
     private string GetProfilesPath()
-    {
-        if (_profilesPathOverride is not null)
-            return _profilesPathOverride;
-
-        var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "NVibrance");
-
-        Directory.CreateDirectory(dir);
-        return Path.Combine(dir, "profiles.json");
-    }
+        => _profilesPathOverride ?? Path.Combine(AppInfo.DataDirectory, "profiles.json");
 
     public void LoadFromDisk()
     {

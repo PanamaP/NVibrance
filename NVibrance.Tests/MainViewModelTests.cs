@@ -111,19 +111,6 @@ public class MainViewModelTests : IDisposable
     }
 
     [Fact]
-    public void CapturedValue_IsTheDesktopValueOnlyWhileOverridden()
-    {
-        var state = new VibranceState();
-        Assert.Null(state.CapturedValue);
-
-        state.Capture(55);
-        Assert.Equal(55, state.CapturedValue);
-
-        state.Restore();
-        Assert.Null(state.CapturedValue);
-    }
-
-    [Fact]
     public void DeleteSelectedProfile_SelectsTheRowThatTakesItsPlace()
     {
         var vm = CreateWithProfiles("A", "B", "C");

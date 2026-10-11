@@ -100,8 +100,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// </summary>
     private void ShowDesktopValue(int driverValue)
     {
-        // while a profile is applied the driver holds the profile's value, not the desktop's
-        var desktop = _controller?.State.CapturedValue ?? driverValue;
+        // while a profile is applied on the primary, the driver holds the profile's value, not the desktop's
+        var desktop = _controller?.State.CapturedValueFor(_vibrance.PrimaryDisplay) ?? driverValue;
 
         _refreshingDisplayValue = true;
         try

@@ -1,3 +1,4 @@
+using NVibrance.Nvidia;
 using NVibrance.Services;
 
 namespace NVibrance.Focus;
@@ -18,13 +19,15 @@ public sealed class VibranceController : IDisposable
     private readonly IDelayScheduler _debounce;
     private readonly Func<uint, string?> _resolveExePath;
     private readonly Func<uint, string?> _resolveProcessName;
+    private readonly Func<IntPtr, DisplayId> _resolveDisplay;
     private readonly Func<(IntPtr Hwnd, uint Pid)> _getForeground;
     public readonly VibranceState State = new();
 
     private IntPtr _activeWindowHandle = IntPtr.Zero;
     private string? _activeExePath;
+    private DisplayId? _activeDisplay;
     private ProgramProfile? _lastTarget;
-    private ProgramProfile? _pendingTarget;
+    private (ProgramProfile Profile, DisplayId Display)? _pendingTarget;
     private bool _isPaused;
 
     /// <summary>The profile currently applied, or null when the desktop value is in effect.</summary>
@@ -69,7 +72,8 @@ public sealed class VibranceController : IDisposable
         IDelayScheduler? debounce = null,
         Func<uint, string?>? resolveExePath = null,
         Func<uint, string?>? resolveProcessName = null,
-        Func<(IntPtr Hwnd, uint Pid)>? getForeground = null)
+        Func<(IntPtr Hwnd, uint Pid)>? getForeground = null,
+        Func<IntPtr, DisplayId>? resolveDisplay = null)
     {
         _hook = hook;
         _registry = registry;
@@ -78,6 +82,7 @@ public sealed class VibranceController : IDisposable
         _resolveExePath = resolveExePath ?? ProcessPathResolver.TryGetExecutablePath;
         _resolveProcessName = resolveProcessName ?? ProcessPathResolver.TryGetProcessName;
         _getForeground = getForeground ?? GetForegroundFromWin32;
+        _resolveDisplay = resolveDisplay ?? MonitorLocator.ForWindow;
 
         if (_hook is not null)
             _hook.ForegroundProcessChanged += Evaluate;
@@ -114,7 +119,9 @@ public sealed class VibranceController : IDisposable
             return;
 
         var exePath = _resolveExePath(pid);
-        var sameWindow = hwnd == _activeWindowHandle;
+        var display = _resolveDisplay(hwnd);
+        // a windowed game dragged to another monitor is a new placement to apply on
+        var sameWindow = hwnd == _activeWindowHandle && display == _activeDisplay;
 
         // Dedupe: only a successful resolution is authoritative. A null path is never
         // cached, so a window whose process couldn't be read yet (e.g. transient failure
@@ -124,6 +131,7 @@ public sealed class VibranceController : IDisposable
 
         _activeWindowHandle = hwnd;
         _activeExePath = exePath;
+        _activeDisplay = display;
 
         ProgramProfile? target = null;
         if (exePath is not null)
@@ -144,7 +152,7 @@ public sealed class VibranceController : IDisposable
         }
 
         Log.Debug(
-            $"Foreground hwnd=0x{hwnd:X} pid={pid} path={exePath ?? "<unresolved>"} " +
+            $"Foreground hwnd=0x{hwnd:X} pid={pid} path={exePath ?? "<unresolved>"} on {display} " +
             $"-> {(target is null ? "no matching profile" : $"profile '{target.Name}'")}");
 
         // Same window reaching the same conclusion as last time → nothing new to
@@ -155,7 +163,7 @@ public sealed class VibranceController : IDisposable
 
         // Debounce: restart the quiet period on every new target so rapid alt-tab churn
         // (game → overlay → game) produces a single NVAPI write.
-        _pendingTarget = target;
+        _pendingTarget = target is null ? null : (target, display);
         _lastTarget = target;
         _debounce.Schedule(CommitPending);
     }
@@ -177,6 +185,7 @@ public sealed class VibranceController : IDisposable
     {
         _activeWindowHandle = IntPtr.Zero;
         _activeExePath = null;
+        _activeDisplay = null;
         _lastTarget = null;
     }
 
@@ -184,12 +193,12 @@ public sealed class VibranceController : IDisposable
     {
         try
         {
-            if (_pendingTarget is not null)
-                ApplyProfile(_pendingTarget);
+            if (_pendingTarget is (var profile, var display))
+                ApplyProfile(profile, display);
             else
                 RestoreIfNeeded();
 
-            ActiveProfile = _pendingTarget;
+            ActiveProfile = _pendingTarget?.Profile;
         }
         catch (Exception ex)
         {
@@ -200,24 +209,26 @@ public sealed class VibranceController : IDisposable
         StatusChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void ApplyProfile(ProgramProfile profile)
+    private void ApplyProfile(ProgramProfile profile, DisplayId display)
     {
-        var current = _vibrance.GetCurrent(_vibrance.PrimaryDisplay);
+        if (State.Current is { } other && other.Display != display)
+            RestoreIfNeeded();
+
+        var current = _vibrance.GetCurrent(display);
         if (current == profile.Vibrance)
             return;
 
-        State.Capture(current);
-        _vibrance.Set(_vibrance.PrimaryDisplay, profile.Vibrance);
-        Log.Info($"Applied profile '{profile.Name}' (vibrance {profile.Vibrance}, was {current}).");
+        State.Capture(display, current);
+        _vibrance.Set(display, profile.Vibrance);
+        Log.Info($"Applied profile '{profile.Name}' on {display} (vibrance {profile.Vibrance}, was {current}).");
     }
 
     private void RestoreIfNeeded()
     {
-        var restore = State.Restore();
-        if (restore.HasValue)
+        if (State.Restore() is { } restore)
         {
-            _vibrance.Set(_vibrance.PrimaryDisplay, restore.Value);
-            Log.Info($"Restored desktop vibrance {restore.Value}.");
+            _vibrance.Set(restore.Display, restore.DesktopValue);
+            Log.Info($"Restored desktop vibrance {restore.DesktopValue} on {restore.Display}.");
         }
     }
 

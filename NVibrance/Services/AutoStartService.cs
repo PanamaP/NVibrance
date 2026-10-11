@@ -61,6 +61,29 @@ public static class AutoStartService
         }
     }
 
+    /// <summary>
+    /// Removes the autostart entry only if it launches <paramref name="exePath"/>. Used on
+    /// uninstall, so removing the installed copy doesn't break a portable copy the user
+    /// registered instead.
+    /// </summary>
+    public static void DisableIfRegisteredFor(string? exePath, string valueName = DefaultValueName)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
+            if (key?.GetValue(valueName) is string stored && IsRegisteredFor(stored, exePath))
+                key.DeleteValue(valueName, throwOnMissingValue: false);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Could not remove autostart entry: {ex.Message}");
+        }
+    }
+
+    internal static bool IsRegisteredFor(string storedCommand, string? exePath)
+        => exePath is not null
+           && string.Equals(ExtractExePath(storedCommand), exePath, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Builds the Run-key command line, or null if the path is unusable.</summary>
     internal static string? BuildRunCommand(string? exePath)
         => string.IsNullOrEmpty(exePath) ? null : $"\"{exePath}\" --minimized";

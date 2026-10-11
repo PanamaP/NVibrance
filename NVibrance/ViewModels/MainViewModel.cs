@@ -16,6 +16,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ProgramRegistry _registry;
     private readonly IVibranceService _vibrance;
     private readonly VibranceController? _controller;
+    private readonly UpdateService? _updates;
 
     /// <summary>Suppresses driver writes while reflecting an already-current value into the slider.</summary>
     private bool _refreshingDisplayValue;
@@ -33,15 +34,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// <summary>Sidebar rows: the <see cref="Desktop"/> entry first, then every profile.</summary>
     public ObservableCollection<object> Entries { get; } = new();
 
-    public MainViewModel(ProgramRegistry registry, IVibranceService vibrance, VibranceController? controller = null)
+    public MainViewModel(ProgramRegistry registry, IVibranceService vibrance, VibranceController? controller = null,
+        UpdateService? updates = null)
     {
         _registry = registry;
         _vibrance = vibrance;
         _controller = controller;
+        _updates = updates;
 
         Entries.CollectionChanged += OnEntriesChanged;
         if (_controller is not null)
             _controller.StatusChanged += (_, _) => OnPropertyChanged(nameof(IsSwitchingPaused));
+        if (_updates is not null)
+            _updates.UpdateReady += (_, _) =>
+            {
+                OnPropertyChanged(nameof(IsUpdateReady));
+                OnPropertyChanged(nameof(ReadyUpdateVersion));
+                OnPropertyChanged(nameof(ReleaseNotesUrl));
+            };
 
         RefreshDisplays();
         RefreshProfiles();
@@ -139,6 +149,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool IsProfileSelected => SelectedEntry is ProgramProfile;
 
     public bool HasProfiles => Entries.Count > 1;
+
+    /// <summary>A new version has been downloaded and is waiting for a restart.</summary>
+    public bool IsUpdateReady => _updates?.ReadyUpdate is not null;
+
+    public string? ReadyUpdateVersion => _updates?.ReadyUpdate?.Version.ToString();
+
+    public string? ReleaseNotesUrl => _updates?.ReleaseNotesUrl;
 
     /// <summary>Automatic profile switching is paused (set from the tray menu).</summary>
     public bool IsSwitchingPaused

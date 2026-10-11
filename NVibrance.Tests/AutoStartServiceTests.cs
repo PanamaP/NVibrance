@@ -25,6 +25,18 @@ public class AutoStartServiceTests
         Assert.Null(AutoStartService.BuildRunCommand(exePath));
     }
 
+    [Theory]
+    [InlineData(@"""C:\Users\me\AppData\Local\NVibrance\current\NVibrance.exe"" --minimized", true)]
+    [InlineData(@"""c:\users\me\appdata\local\nvibrance\current\nvibrance.exe"" --minimized", true)] // case-insensitive
+    [InlineData(@"""C:\Users\me\Downloads\NVibrance\NVibrance.exe"" --minimized", false)] // a portable copy
+    [InlineData("", false)]
+    public void IsRegisteredFor_MatchesOnlyTheSameExecutable(string stored, bool expected)
+    {
+        const string installed = @"C:\Users\me\AppData\Local\NVibrance\current\NVibrance.exe";
+
+        Assert.Equal(expected, AutoStartService.IsRegisteredFor(stored, installed));
+    }
+
     private static readonly Func<string, bool> AllPathsExist = _ => true;
     private static readonly Func<string, bool> NoPathExists = _ => false;
 

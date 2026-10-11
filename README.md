@@ -4,6 +4,18 @@ NVibrance is a small Windows app (WPF) that applies per-application NVIDIA digit
 
 ![The NVibrance window with three game profiles in the sidebar and Apex Legends selected](docs/images/main-window.png)
 
+## Install
+1. Download **`NVibrance-Setup.exe`** from the [latest release](https://github.com/PanamaP/NVibrance/releases/latest) and run it. No administrator rights are needed, and nothing else needs installing first.
+2. NVibrance opens when setup finishes, adds itself to the Start menu, and starts with Windows (turn that off from the tray menu).
+
+NVibrance checks for a new version in the background and downloads it, but never installs it on its own. When one is ready, Windows shows a notification once; the tray menu and the window then offer **Restart to update**, with a link to what's new, and nothing changes until you choose it. The version you're running is shown in the window's title bar and at the bottom of the tray menu. Uninstall it from **Settings › Apps** like any other app.
+
+Windows may show "Windows protected your PC" the first time, because the installer isn't code-signed yet: choose **More info › Run anyway**.
+
+Prefer not to install? **`NVibrance-Portable.zip`** runs from any folder and still updates itself.
+
+> **Upgrading from 1.1 or earlier** (the unzipped `NVibrance.exe`): exit the old copy from its tray icon, run the installer, then delete the old folder. Your profiles carry over, and the installer points "Start with Windows" at the installed copy.
+
 ## Features
 - **Per-application profiles.** Each game keeps its own vibrance, applied whenever it gains focus.
 - **Desktop row.** The value used when no profile matches sits at the top of the sidebar and is edited like any profile.
@@ -13,7 +25,7 @@ NVibrance is a small Windows app (WPF) that applies per-application NVIDIA digit
 - **Pause.** Turn automatic switching off from the tray menu, for example while recording, and back on again.
 - **Fits Windows 11.** Mica backdrop, dark title bar, keyboard focus rings, and support for high contrast themes and the "Animation effects" setting.
 - **Autostart** with Windows, from the tray menu.
-- **Single-file publish**, framework-dependent or self-contained.
+- **Installer with automatic updates**, small (delta) downloads between versions, and a clean uninstall.
 
 ## Usage
 1. Launch NVibrance, or let it start with Windows.
@@ -45,8 +57,8 @@ Closing the window keeps NVibrance running in the tray; the first time, Windows 
 | `--verbose` | Writes detailed detection diagnostics to the log file. Off by default. |
 
 ## Requirements
-- Windows (desktop)
-- .NET 10 runtime for framework-dependent builds, or none for self-contained builds
+- Windows 10 or 11, 64-bit (the Mica backdrop needs Windows 11 22H2 or later)
+- Nothing else: releases include the .NET runtime
 - NVIDIA drivers and NvAPI available (uses `NvAPIWrapper.Net`)
 
 ## Quick start (development)
@@ -55,6 +67,7 @@ Closing the window keeps NVibrance running in the tray; the first time, Windows 
    - `dotnet restore NVibrance.slnx`
    - `dotnet build NVibrance.slnx -c Release --no-restore`
 3. Run from IDE (Rider) or run `dotnet run --project NVibrance/NVibrance.csproj` for debugging.
+4. To build and check the installer the way CI does: `./.github/scripts/package.ps1 -Version 0.0.1-dev`, then `./.github/scripts/smoke-test-installer.ps1 -Version 0.0.1-dev`. The smoke test really installs and uninstalls NVibrance, and removes its autostart entry.
 
 ## Where NVibrance stores things
 
@@ -63,9 +76,12 @@ Closing the window keeps NVibrance running in the tray; the first time, Windows 
 | Profiles | `%APPDATA%\NVibrance\profiles.json` |
 | Corrupt-profile backup | `%APPDATA%\NVibrance\profiles.json.bad` |
 | "Still running" notice shown | `%APPDATA%\NVibrance\tray-hint-shown` (empty marker file) |
+| Last update notified | `%APPDATA%\NVibrance\update-notified` (the version number) |
 | Log file | `%LOCALAPPDATA%\NVibrance\logs\nvibrance.log` |
 | Previous log (rotated) | `%LOCALAPPDATA%\NVibrance\logs\nvibrance.1.log` |
 | Autostart entry | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `NVibrance` |
+| Installed app | `%LOCALAPPDATA%\PanamaP.NVibrance` (installer only) |
+| Installer and update log | `%LOCALAPPDATA%\velopack\velopack.log` |
 
 Notes:
 - Profiles are written a moment after you make a change, and again on exit. Writes are atomic, so an interrupted save cannot leave a half-written file.
@@ -73,7 +89,8 @@ Notes:
 - The two folders differ on purpose. `%APPDATA%` (Roaming) holds settings that should follow you to another machine, so profiles live there. `%LOCALAPPDATA%` holds machine-specific data, so logs live there — they reference local paths, process ids and hardware, and where roaming profiles or folder redirection are configured, anything under Roaming is copied at logon.
 - The log rotates at 1 MB and keeps one previous file, so it cannot grow without bound.
 - Icons are loaded from executable files and cached in memory only; nothing is written to disk.
-- Uninstalling is just deleting the executable — remove the two folders above and the registry value to clear everything.
+- Uninstalling from Settings › Apps removes the app, its Start menu shortcut and its autostart entry, but keeps your profiles and logs in case you reinstall. To clear everything, also delete `%APPDATA%\NVibrance` and `%LOCALAPPDATA%\NVibrance`. For the portable copy, delete its folder, those two folders, and the autostart registry value.
+- Only one copy of NVibrance runs at a time: launching it again (from the Start menu, say) brings up the running copy's window.
 
 ## Troubleshooting
 

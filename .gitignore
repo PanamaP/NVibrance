@@ -482,3 +482,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# installer outputs from .github/scripts/package.ps1
+NVibrance-Setup.exe
+NVibrance-Portable.zip

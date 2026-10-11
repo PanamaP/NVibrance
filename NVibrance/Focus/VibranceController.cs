@@ -202,12 +202,12 @@ public sealed class VibranceController : IDisposable
 
     private void ApplyProfile(ProgramProfile profile)
     {
-        var current = _vibrance.GetCurrent();
+        var current = _vibrance.GetCurrent(_vibrance.PrimaryDisplay);
         if (current == profile.Vibrance)
             return;
 
         State.Capture(current);
-        _vibrance.Set(profile.Vibrance);
+        _vibrance.Set(_vibrance.PrimaryDisplay, profile.Vibrance);
         Log.Info($"Applied profile '{profile.Name}' (vibrance {profile.Vibrance}, was {current}).");
     }
 
@@ -216,7 +216,7 @@ public sealed class VibranceController : IDisposable
         var restore = State.Restore();
         if (restore.HasValue)
         {
-            _vibrance.Set(restore.Value);
+            _vibrance.Set(_vibrance.PrimaryDisplay, restore.Value);
             Log.Info($"Restored desktop vibrance {restore.Value}.");
         }
     }

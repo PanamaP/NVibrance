@@ -1,4 +1,5 @@
 using System.IO;
+using NVibrance.Nvidia;
 using NVibrance.Services;
 using NVibrance.ViewModels;
 using Xunit;
@@ -8,6 +9,9 @@ namespace NVibrance.Tests;
 public class MainViewModelTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "NVibranceTests_" + Guid.NewGuid().ToString("N"));
+    private static readonly DisplayId Primary = new(@"\\.\DISPLAY1");
+    private static readonly DisplayId Secondary = new(@"\\.\DISPLAY2");
+
     private readonly ProgramRegistry _registry;
     private readonly FakeVibranceService _vibrance = new();
 
@@ -57,8 +61,19 @@ public class MainViewModelTests : IDisposable
 
         vm.DetailVibrance = 65;
 
-        Assert.Equal(new[] { 65 }, _vibrance.SetCalls);
+        Assert.Equal(new[] { (Primary, 65), (Secondary, 65) }, _vibrance.SetCalls);
         Assert.Equal(65, vm.Desktop.Vibrance);
+    }
+
+    [Fact]
+    public void DetailVibrance_OnDesktop_StillWritesTheOtherDisplaysWhenOneFails()
+    {
+        var vm = CreateWithProfiles();
+        _vibrance.Failing.Add(Primary);
+
+        vm.DetailVibrance = 65;
+
+        Assert.Equal(new[] { (Secondary, 65) }, _vibrance.SetCalls);
     }
 
     [Fact]
@@ -190,10 +205,21 @@ public class MainViewModelTests : IDisposable
 
     private sealed class FakeVibranceService : IVibranceService
     {
-        public List<int> SetCalls { get; } = new();
+        public List<(DisplayId Display, int Value)> SetCalls { get; } = new();
+        public HashSet<DisplayId> Failing { get; } = new();
 
-        public int GetCurrent() => 50;
+        public DisplayId PrimaryDisplay => Primary;
 
-        public void Set(int value) => SetCalls.Add(value);
+        public IReadOnlyList<DisplayId> GetDisplays() => [Primary, Secondary];
+
+        public int GetCurrent(DisplayId display) => 50;
+
+        public void Set(DisplayId display, int value)
+        {
+            if (Failing.Contains(display))
+                throw new InvalidOperationException($"{display} is not an active NVIDIA display.");
+
+            SetCalls.Add((display, value));
+        }
     }
 }

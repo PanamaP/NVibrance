@@ -18,7 +18,8 @@ Prefer not to install? **`NVibrance-Portable.zip`** runs from any folder and sti
 
 ## Features
 - **Per-application profiles.** Each game keeps its own vibrance, applied whenever it gains focus.
-- **Desktop row.** The value used when no profile matches sits at the top of the sidebar and is edited like any profile.
+- **Multiple monitors.** A profile applies to the monitor the game is on. Your other monitors keep their own vibrance.
+- **Desktop row.** The value used when no profile matches sits at the top of the sidebar and is edited like any profile. Changing it sets every monitor.
 - **Quick adding.** Pick from the apps that are running, with search, or browse for an `.exe`.
 - **Forgiving edits.** Rename a profile in place (click its name or press F2). Deleting can be undone for a few seconds (Undo or Ctrl+Z).
 - **Tray status.** The tray icon's tooltip and menu show what is applied right now.
@@ -31,7 +32,7 @@ Prefer not to install? **`NVibrance-Portable.zip`** runs from any folder and sti
 1. Launch NVibrance, or let it start with Windows.
 2. Click **Add program** and pick a running game, or choose **Browse for an .exe…**.
 3. Set the game's vibrance with the slider. It is saved automatically and applied whenever that game is in focus.
-4. Select **Desktop** to change the vibrance used everywhere else. That change applies immediately.
+4. Select **Desktop** to change the vibrance used everywhere else. That change applies immediately, to every monitor.
 
 ![The Add program picker, filtered by a search](docs/images/add-program.png)
 

@@ -104,6 +104,56 @@ public static class NativeMethods
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
+    // -------- Monitor lookup --------
+    public const uint MonitorDefaultToPrimary = 0x0001;
+    public const uint MonitorDefaultToNearest = 0x0002;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Point
+    {
+        public int X, Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Rect
+    {
+        public int Left, Top, Right, Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct MonitorInfoEx
+    {
+        public int Size;
+        public Rect Monitor;
+        public Rect WorkArea;
+        public uint Flags;
+
+        /// <summary>GDI device name, e.g. <c>\\.\DISPLAY1</c>.</summary>
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string DeviceName;
+    }
+
+    /// <summary>
+    ///   Retrieves the monitor that has the largest intersection with the window,
+    ///   or the one chosen by <paramref name="dwFlags"/> when there is none.
+    /// </summary>
+    [DllImport("user32.dll")]
+    public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+    /// <summary>
+    ///   Retrieves the monitor that contains the point, or the one chosen by
+    ///   <paramref name="dwFlags"/> when there is none.
+    /// </summary>
+    [DllImport("user32.dll")]
+    public static extern IntPtr MonitorFromPoint(Point pt, uint dwFlags);
+
+    /// <summary>
+    ///   Retrieves the bounds and GDI device name of a monitor.
+    ///   <see cref="MonitorInfoEx.Size"/> must be set before the call.
+    /// </summary>
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfoEx lpmi);
+
     /// <summary>
     ///   Access right that allows QueryFullProcessImageName even on protected
     ///   (anti-cheat/elevated) processes, unlike the broader rights Process.MainModule needs.

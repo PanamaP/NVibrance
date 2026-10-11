@@ -190,6 +190,27 @@ public class MainViewModelTests : IDisposable
         Assert.Equal(1, edited);
     }
 
+    [Fact]
+    public void SliderRange_ComesFromThePrimaryDisplay_FlooredAtTheProfileMinimum()
+    {
+        var vm = CreateWithProfiles();
+
+        Assert.Equal(VibranceService.MinVibrance, vm.SliderMin);
+        Assert.Equal(100, vm.SliderMax);
+        Assert.True(vm.HasDisplay);
+        Assert.Empty(_vibrance.SetCalls);
+    }
+
+    [Fact]
+    public void WithoutNvidiaDisplays_ThereIsNothingToAdjust()
+    {
+        _vibrance.Displays = [];
+
+        var vm = CreateWithProfiles();
+
+        Assert.False(vm.HasDisplay);
+    }
+
     private sealed class FakeVibranceService : IVibranceService
     {
         public List<(DisplayId Display, int Value)> SetCalls { get; } = new();
@@ -197,9 +218,13 @@ public class MainViewModelTests : IDisposable
 
         public DisplayId PrimaryDisplay => Primary;
 
-        public IReadOnlyList<DisplayId> GetDisplays() => [Primary, Secondary];
+        public IReadOnlyList<DisplayId> Displays { get; set; } = [Primary, Secondary];
+
+        public IReadOnlyList<DisplayId> GetDisplays() => Displays;
 
         public int GetCurrent(DisplayId display) => 50;
+
+        public (int Minimum, int Maximum) GetRange(DisplayId display) => (0, 100);
 
         public void Set(DisplayId display, int value)
         {

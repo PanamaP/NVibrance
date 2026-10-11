@@ -27,8 +27,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// </summary>
     private bool _syncingSlider;
 
-    public ObservableCollection<VibranceInfo> Displays { get; } = new();
-
     public DesktopEntry Desktop { get; } = new();
 
     /// <summary>Sidebar rows: the <see cref="Desktop"/> entry first, then every profile.</summary>
@@ -55,25 +53,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         RefreshDisplays();
         RefreshProfiles();
-    }
-
-    public VibranceInfo? SelectedDisplay
-    {
-        get;
-        set
-        {
-            if (!SetField(ref field, value)) return;
-            if (value is null) return;
-
-            // ensure UI minimum honors the service minimum
-            SyncSlider(() =>
-            {
-                SliderMin = Math.Max(value.Minimum, VibranceService.MinVibrance);
-                SliderMax = value.Maximum;
-            });
-
-            ShowDesktopValue(value.Current);
-        }
     }
 
     /// <summary>
@@ -255,24 +234,34 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Refreshes the list of available displays.
+    /// Reads the slider range and desktop value from the primary display, or from the first
+    /// NVIDIA display when another GPU drives the primary.
     /// </summary>
     public void RefreshDisplays()
     {
-        Displays.Clear();
         try
         {
-            foreach (var d in VibranceReader.ReadAll())
-                Displays.Add(d);
+            var displays = _vibrance.GetDisplays();
+            if (displays.Count == 0)
+                return;
+
+            var primary = _vibrance.PrimaryDisplay;
+            var display = displays.Contains(primary) ? primary : displays[0];
+            var (minimum, maximum) = _vibrance.GetRange(display);
+
+            SyncSlider(() =>
+            {
+                SliderMin = Math.Max(minimum, VibranceService.MinVibrance);
+                SliderMax = maximum;
+            });
+
+            ShowDesktopValue(_vibrance.GetCurrent(display));
         }
         catch (Exception ex)
         {
-            // NVAPI unavailable (non-NVIDIA GPU, driver update in progress) → empty list
+            // NVAPI unavailable (non-NVIDIA GPU, driver update in progress): HasDisplay stays false
             Log.Error("Failed to read displays from NVAPI.", ex);
         }
-
-        var primary = _vibrance.PrimaryDisplay;
-        SelectedDisplay = Displays.FirstOrDefault(d => new DisplayId(d.Name) == primary) ?? Displays.FirstOrDefault();
     }
 
     /// <summary>

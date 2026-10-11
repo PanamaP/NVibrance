@@ -20,6 +20,12 @@ public sealed class VibranceService : IVibranceService
     public int GetCurrent(DisplayId display)
         => Find(display).DigitalVibranceControl.CurrentLevel;
 
+    public (int Minimum, int Maximum) GetRange(DisplayId display)
+    {
+        var dvc = Find(display).DigitalVibranceControl;
+        return (dvc.MinimumLevel, dvc.MaximumLevel);
+    }
+
     public void Set(DisplayId display, int value)
     {
         var dvc = Find(display).DigitalVibranceControl;

@@ -410,6 +410,8 @@ public class VibranceControllerTests : IDisposable
             return Values[display];
         }
 
+        public (int Minimum, int Maximum) GetRange(DisplayId display) => (0, 100);
+
         public void Set(DisplayId display, int value)
         {
             SetCalls.Add((display, value));

@@ -15,7 +15,7 @@ public sealed class VibranceService : IVibranceService
     public DisplayId PrimaryDisplay => MonitorLocator.Primary();
 
     public IReadOnlyList<DisplayId> GetDisplays()
-        => ActiveDisplays().Select(d => new DisplayId(d.Name)).ToList();
+        => Display.GetDisplays().Select(d => new DisplayId(d.Name)).ToList();
 
     public int GetCurrent(DisplayId display)
         => Find(display).DigitalVibranceControl.CurrentLevel;
@@ -30,10 +30,8 @@ public sealed class VibranceService : IVibranceService
         => Math.Clamp(value, hwMin, hwMax);
 
     // Looked up on every call: a cached handle goes stale when a monitor is hot-plugged.
+    // NVAPI enumerates only active displays; the DisplayDevice.IsActive check costs ~60 ms.
     private static Display Find(DisplayId display)
-        => ActiveDisplays().FirstOrDefault(d => new DisplayId(d.Name) == display)
+        => Display.GetDisplays().FirstOrDefault(d => new DisplayId(d.Name) == display)
            ?? throw new InvalidOperationException($"{display} is not an active NVIDIA display.");
-
-    private static IEnumerable<Display> ActiveDisplays()
-        => Display.GetDisplays().Where(d => d.DisplayDevice.IsActive && d.DisplayDevice.IsConnected);
 }

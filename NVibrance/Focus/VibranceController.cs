@@ -28,6 +28,7 @@ public sealed class VibranceController : IDisposable
     private DisplayId? _activeDisplay;
     private ProgramProfile? _lastTarget;
     private (ProgramProfile Profile, DisplayId Display)? _pendingTarget;
+    private (DisplayId Display, int Value)? _preview;
     private bool _isPaused;
 
     /// <summary>The profile currently applied, or null when the desktop value is in effect.</summary>
@@ -54,7 +55,7 @@ public sealed class VibranceController : IDisposable
             {
                 _debounce.Cancel();
                 _pendingTarget = null;
-                CommitPending(); // restores the desktop value
+                CommitPending(); // restores the desktop value, unless a preview is showing
             }
             else
             {
@@ -189,16 +190,33 @@ public sealed class VibranceController : IDisposable
         _lastTarget = null;
     }
 
+    /// <summary>
+    /// Shows a profile value being edited, on the display of the foreground window
+    /// (NVibrance's own while the slider is dragged), until <see cref="EndPreview"/>.
+    /// Applies immediately and even while paused, so the edit is visible as it happens.
+    /// </summary>
+    public void Preview(int value)
+    {
+        var (hwnd, _) = _getForeground();
+        var display = hwnd == IntPtr.Zero ? _vibrance.PrimaryDisplay : _resolveDisplay(hwnd);
+        _preview = (display, value);
+        CommitPending();
+    }
+
+    /// <summary>Ends a preview, returning to the foreground window's profile or the desktop value.</summary>
+    public void EndPreview()
+    {
+        if (_preview is null) return;
+
+        _preview = null;
+        CommitPending();
+    }
+
     private void CommitPending()
     {
         try
         {
-            if (_pendingTarget is (var profile, var display))
-                ApplyProfile(profile, display);
-            else
-                RestoreIfNeeded();
-
-            ActiveProfile = _pendingTarget?.Profile;
+            ApplyDesired();
         }
         catch (Exception ex)
         {
@@ -209,18 +227,30 @@ public sealed class VibranceController : IDisposable
         StatusChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void ApplyProfile(ProgramProfile profile, DisplayId display)
+    private void ApplyDesired()
+    {
+        if (_preview is (var previewDisplay, var previewValue))
+            Apply(previewDisplay, previewValue, "preview");
+        else if (_pendingTarget is (var profile, var display))
+            Apply(display, profile.Vibrance, $"profile '{profile.Name}'");
+        else
+            RestoreIfNeeded();
+
+        ActiveProfile = _preview is null ? _pendingTarget?.Profile : null;
+    }
+
+    private void Apply(DisplayId display, int value, string what)
     {
         if (State.Current is { } other && other.Display != display)
             RestoreIfNeeded();
 
         var current = _vibrance.GetCurrent(display);
-        if (current == profile.Vibrance)
+        if (current == value)
             return;
 
         State.Capture(display, current);
-        _vibrance.Set(display, profile.Vibrance);
-        Log.Info($"Applied profile '{profile.Name}' on {display} (vibrance {profile.Vibrance}, was {current}).");
+        _vibrance.Set(display, value);
+        Log.Info($"Applied {what} on {display} (vibrance {value}, was {current}).");
     }
 
     private void RestoreIfNeeded()

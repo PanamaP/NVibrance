@@ -48,6 +48,7 @@ public partial class MainWindow
 
         Closing += OnClosingHide;
         Activated += (_, _) => RefreshOnActivate();
+        Deactivated += (_, _) => Vm.EndPreview();
         StateChanged += (_, _) => UpdateMaximizedState();
 
         _savedTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
@@ -160,6 +161,7 @@ public partial class MainWindow
 
     private void HideToTray()
     {
+        Vm.EndPreview();
         Hide();
         HiddenToTray?.Invoke(this, EventArgs.Empty);
     }

@@ -394,6 +394,97 @@ public class VibranceControllerTests : IDisposable
             _vibrance.SetCalls);
     }
 
+    private const string NVibrancePath = @"C:\Program Files\NVibrance\NVibrance.exe";
+
+    private void FocusNVibranceOn(DisplayId display)
+    {
+        _paths[OtherPid] = NVibrancePath;
+        _monitors[OtherHwnd] = display;
+        _foreground = (OtherHwnd, OtherPid);
+    }
+
+    [Fact]
+    public void Preview_AppliesOnTheForegroundDisplay_AndEndPreviewRestores()
+    {
+        FocusNVibranceOn(Secondary);
+        _vibrance.Values[Secondary] = 55;
+        using var controller = CreateController();
+
+        controller.Preview(70);
+        Assert.Equal(new[] { (Secondary, 70) }, _vibrance.SetCalls);
+
+        controller.EndPreview();
+        Assert.Equal(new[] { (Secondary, 70), (Secondary, 55) }, _vibrance.SetCalls);
+    }
+
+    [Fact]
+    public void ProfileChangeDuringPreview_KeepsThePreviewApplied()
+    {
+        AddApexProfile();
+        FocusNVibranceOn(Primary);
+        using var controller = CreateController();
+
+        controller.Preview(70);
+        _registry.FindByExePath(ApexPath)!.Vibrance = 90; // commits a re-evaluation
+
+        Assert.Equal(new[] { (Primary, 70) }, _vibrance.SetCalls);
+        Assert.Equal(70, _vibrance.Values[Primary]);
+    }
+
+    [Fact]
+    public void RepeatedPreviews_RestoreTheOriginalDesktopValue()
+    {
+        FocusNVibranceOn(Primary);
+        _vibrance.Values[Primary] = 55;
+        using var controller = CreateController();
+
+        controller.Preview(60);
+        controller.Preview(70);
+        controller.EndPreview();
+
+        Assert.Equal(new[] { (Primary, 60), (Primary, 70), (Primary, 55) }, _vibrance.SetCalls);
+    }
+
+    [Fact]
+    public void PreviewWhilePaused_AppliesAndEndPreviewRestores()
+    {
+        FocusNVibranceOn(Primary);
+        using var controller = CreateController();
+        controller.IsPaused = true;
+
+        controller.Preview(70);
+        controller.EndPreview();
+
+        Assert.Equal(new[] { (Primary, 70), (Primary, 50) }, _vibrance.SetCalls);
+    }
+
+    [Fact]
+    public void PausingAndResumingDuringPreview_KeepsThePreviewApplied()
+    {
+        FocusNVibranceOn(Primary);
+        using var controller = CreateController();
+
+        controller.Preview(70);
+        controller.IsPaused = true;
+        Assert.True(controller.IsPaused);
+        controller.IsPaused = false;
+
+        Assert.Equal(new[] { (Primary, 70) }, _vibrance.SetCalls);
+    }
+
+    [Fact]
+    public void Dispose_RestoresDuringPreview()
+    {
+        FocusNVibranceOn(Primary);
+        _vibrance.Values[Primary] = 55;
+        var controller = CreateController();
+
+        controller.Preview(70);
+        controller.Dispose();
+
+        Assert.Equal(new[] { (Primary, 70), (Primary, 55) }, _vibrance.SetCalls);
+    }
+
     private sealed class FakeVibranceService : IVibranceService
     {
         public Dictionary<DisplayId, int> Values { get; } = new() { [Primary] = 50, [Secondary] = 50 };

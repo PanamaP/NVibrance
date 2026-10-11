@@ -1,4 +1,5 @@
 using System.IO;
+using NVibrance.Focus;
 using NVibrance.Nvidia;
 using NVibrance.Services;
 using NVibrance.ViewModels;
@@ -211,6 +212,23 @@ public class MainViewModelTests : IDisposable
         Assert.False(vm.HasDisplay);
     }
 
+    [Fact]
+    public void EditingAProfile_PreviewsItsValue_UntilTheSelectionChanges()
+    {
+        _registry.Add(new ProgramProfile("A", @"C:\Games\A.exe", 70));
+        using var controller = new VibranceController(
+            hook: null, registry: _registry, vibrance: _vibrance,
+            debounce: new ImmediateScheduler(), getForeground: () => (IntPtr.Zero, 0u));
+        var vm = new MainViewModel(_registry, _vibrance, controller);
+        vm.SelectedEntry = vm.Entries[1];
+
+        vm.DetailVibrance = 90;
+        Assert.Equal(new[] { (Primary, 90) }, _vibrance.SetCalls);
+
+        vm.SelectedEntry = vm.Desktop;
+        Assert.Equal(new[] { (Primary, 90), (Primary, 50) }, _vibrance.SetCalls);
+    }
+
     private sealed class FakeVibranceService : IVibranceService
     {
         public List<(DisplayId Display, int Value)> SetCalls { get; } = new();
@@ -233,5 +251,12 @@ public class MainViewModelTests : IDisposable
 
             SetCalls.Add((display, value));
         }
+    }
+
+    private sealed class ImmediateScheduler : IDelayScheduler
+    {
+        public void Schedule(Action action) => action();
+
+        public void Cancel() { }
     }
 }

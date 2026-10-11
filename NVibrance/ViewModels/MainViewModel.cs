@@ -118,8 +118,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(IsDesktopSelected));
             OnPropertyChanged(nameof(IsProfileSelected));
             SyncSlider(() => OnPropertyChanged(nameof(DetailVibrance)));
+            _controller?.EndPreview();
         }
     }
+
+    /// <summary>Stops showing an edited profile's value on screen.</summary>
+    public void EndPreview() => _controller?.EndPreview();
 
     public ProgramProfile? SelectedProfile => SelectedEntry as ProgramProfile;
 
@@ -223,6 +227,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 profile.Vibrance = value;
                 ProfileEdited?.Invoke(this, EventArgs.Empty);
+                _controller?.Preview(value);
             }
             else
             {
